@@ -3,111 +3,127 @@
 namespace App\Http\Controllers;
 
 use App\Models\Invoice;
+use Xendit\Xendit;
+use App\Services\XenditService;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
 class InvoiceController extends Controller
 {
-    public function sendToXendit($id)
+    protected $xenditService;
+
+    public function __construct(XenditService $xenditService)
     {
-        // Ambil data invoice berdasarkan ID
-        $invoice = Invoice::find($id);
-        set_time_limit(120);  // Menambah waktu eksekusi menjadi 120 detik
+        $this->xenditService = $xenditService;
+    }
 
-        if (!$invoice) {
-            return response()->json(['message' => 'Invoice tidak ditemukan'], 404);
-        }
-
-        // Pastikan nomor telepon dalam format internasional (+62 untuk Indonesia)
-        $phoneNumber = $this->formatPhoneNumber($invoice->no_telp);
-
-        // Pilih API Key berdasarkan brand
-        $apiKey = $this->getApiKeyByBrand($invoice->brand); // Ambil API key dari .env
-
-        // URL Xendit API
-        $url = env('XENDIT_API_URL');  // pastikan URL Xendit sudah benar
-
-        // Data yang dikirim ke Xendit
-        $data = [
-            'external_id' => $invoice->invoice_number,
-            'payer_email' => $invoice->email,
-            'description' => "Pembayaran Invoice #{$invoice->invoice_number}",
-            'amount' => (int) $invoice->total_harga,
-            'customer' => [
-                'given_names' => $invoice->pelanggan->nama,
-                'email' => $invoice->email,
-                'mobile_number' => $phoneNumber,  // Pastikan format telepon sudah benar
-            ],
-            'customer_notification_preference' => [
-                'invoice_created' => ['email', 'whatsapp'],  // Pastikan sudah benar
-                'invoice_reminder' => ['email', 'whatsapp'],
-                'invoice_expired' => ['email', 'whatsapp'],
-                'invoice_paid' => ['email', 'whatsapp'],
-            ]
-        ];
-
-        // Kirim permintaan ke Xendit
-        $response = Http::withBasicAuth($apiKey, '')
-            ->post($url, $data);
-
-        // Log respons dari Xendit untuk debugging
-        Log::info('Xendit Response:', ['response' => $response->json()]);
-
-        // Simpan response ke database jika berhasil
-        if ($response->successful()) {
-            // Pastikan ada 'invoice_url' di dalam respons
-            if ($response->has('invoice_url')) {
-                $invoice->payment_link = $response['invoice_url'];
-                $invoice->status_invoice = 'Menunggu Pembayaran';
-                $invoice->save();
-            }
-        
-            // Kembalikan response dengan informasi link pembayaran
-            return response()->json([
-                'message' => 'Invoice berhasil dikirim ke Xendit dan link disimpan.',
-                'payment_link' => $invoice->payment_link
+    /**
+     * Buat invoice baru
+     */
+    public function createInvoice(Request $request)
+    {
+        try {
+            // Validasi request
+            $validated = $request->validate([
+                'pelanggan_id' => 'required|exists:pelanggans,id',
+                'tgl_invoice' => 'required|date',
+                'tgl_jatuh_tempo' => 'required|date|after:tgl_invoice'
             ]);
-        } else {
-            // Log jika ada kesalahan
-            Log::error('Failed to create invoice on Xendit:', ['error' => $response->json()]);
+
+            // Buat invoice
+            $invoice = Invoice::create($validated);
+
+            // Buat invoice di Xendit
+            $xenditResult = $this->xenditService->createInvoice($invoice);
+
+            if ($xenditResult['status'] === 'success') {
+                // Update invoice dengan informasi Xendit
+                $invoice->update([
+                    'payment_link' => $xenditResult['invoice_url'],
+                    'xendit_id' => $xenditResult['xendit_id'],
+                    'xendit_external_id' => $xenditResult['external_id']
+                ]);
+
+                return response()->json([
+                    'message' => 'Invoice berhasil dibuat',
+                    'invoice' => $invoice
+                ]);
+            }
+
             return response()->json([
-                'message' => 'Gagal mengirim invoice ke Xendit',
-                'error' => $response->json()
+                'message' => 'Gagal membuat invoice di Xendit'
+            ], 500);
+
+        } catch (\Exception $e) {
+            Log::error('Kesalahan membuat invoice', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+
+            return response()->json([
+                'message' => 'Terjadi kesalahan',
+                'error' => $e->getMessage()
             ], 500);
         }
     }
 
     /**
-     * Format nomor telepon menjadi format internasional (+62 untuk Indonesia).
-     *
-     * @param string $phoneNumber
-     * @return string
+     * Periksa status invoice
      */
-    private function formatPhoneNumber($phoneNumber)
+    public function checkStatus($invoiceNumber)
     {
-        // Jika nomor telepon tidak dimulai dengan '+' atau '0', tambahkan prefix +62 (Indonesia)
-        if (substr($phoneNumber, 0, 1) == '0') {
-            return '+62' . substr($phoneNumber, 1); // Ubah nomor jadi format internasional
-        } elseif (substr($phoneNumber, 0, 1) != '+') {
-            return '+62' . $phoneNumber; // Jika tidak dimulai dengan +, tambahkan +62
-        }
+        try {
+            $invoice = Invoice::where('invoice_number', $invoiceNumber)->firstOrFail();
 
-        return $phoneNumber; // Jika sudah dalam format internasional
+            return response()->json([
+                'invoice_number' => $invoice->invoice_number,
+                'status' => $invoice->status_invoice,
+                'paid_amount' => $invoice->paid_amount,
+                'paid_at' => $invoice->paid_at
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Kesalahan memeriksa status invoice', [
+                'invoice_number' => $invoiceNumber,
+                'error' => $e->getMessage()
+            ]);
+
+            return response()->json([
+                'message' => 'Invoice tidak ditemukan'
+            ], 404);
+        }
     }
 
     /**
-     * Mendapatkan API Key berdasarkan brand.
-     *
-     * @param string $brand
-     * @return string
+     * Update status invoice manual (untuk debugging)
      */
-    private function getApiKeyByBrand($brand)
+    public function updateStatus(Request $request)
     {
-        if ($brand === "jakinet") {
-            return env('XENDIT_API_KEY_JAKINET');  // Ambil API key untuk Jakinet dari .env
-        } else {
-            return env('XENDIT_API_KEY_JELANTIK');  // Ambil API key untuk Jelantik dari .env
+        try {
+            $validated = $request->validate([
+                'invoice_number' => 'required|exists:invoices,invoice_number',
+                'status' => 'required|in:Menunggu Pembayaran,Lunas,Kadaluarsa,Selesai'
+            ]);
+
+            $invoice = Invoice::where('invoice_number', $validated['invoice_number'])->first();
+            $invoice->update(['status_invoice' => $validated['status']]);
+
+            return response()->json([
+                'message' => 'Status invoice berhasil diupdate',
+                'invoice' => $invoice
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Kesalahan update status invoice', [
+                'error' => $e->getMessage()
+            ]);
+
+            return response()->json([
+                'message' => 'Gagal update status invoice'
+            ], 500);
         }
     }
+
+  
+
 }

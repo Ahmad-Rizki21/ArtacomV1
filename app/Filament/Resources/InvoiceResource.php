@@ -2,7 +2,6 @@
 
 namespace App\Filament\Resources;
 
-use App\Filament\Resources\InvoiceResource\Pages;
 use App\Models\Invoice;
 use App\Models\Pelanggan;
 use App\Models\DataTeknis;
@@ -13,14 +12,17 @@ use Filament\Forms\Form;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
+use App\Filament\Resources\InvoiceResource\Pages\ListInvoices;
+use App\Filament\Resources\InvoiceResource\Pages\CreateInvoice;
+use App\Filament\Resources\InvoiceResource\Pages\EditInvoice;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\DatePicker;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Actions\EditAction;
 use Filament\Tables\Actions\DeleteAction;
-
-use Filament\Tables\Columns\BadgeColumn;
+use Filament\Tables\Columns\Column;
+use Illuminate\Support\Facades\Log;
 
 class InvoiceResource extends Resource
 {
@@ -46,7 +48,16 @@ class InvoiceResource extends Resource
                     ->searchable()
                     ->live()
                     ->required()
-                    ->afterStateUpdated(fn ($state, callable $set) => self::updateInvoiceData($set, $state)),
+                    ->afterStateUpdated(function ($state, callable $set) {
+                        try {
+                            self::updateInvoiceData($set, $state);
+                        } catch (\Exception $e) {
+                            Log::error('Error updating invoice data', [
+                                'pelanggan_id' => $state,
+                                'error' => $e->getMessage()
+                            ]);
+                        }
+                    }),
 
                 TextInput::make('id_pelanggan')
                     ->label('ID Pelanggan (Data Teknis)')
@@ -60,6 +71,7 @@ class InvoiceResource extends Resource
 
                 TextInput::make('total_harga')
                     ->label('Total Harga')
+                    ->numeric()
                     ->disabled()
                     ->required(),
 
@@ -70,6 +82,7 @@ class InvoiceResource extends Resource
 
                 TextInput::make('email')
                     ->label('Email')
+                    ->email()
                     ->disabled()
                     ->required(),
 
@@ -80,84 +93,134 @@ class InvoiceResource extends Resource
 
                 DatePicker::make('tgl_jatuh_tempo')
                     ->label('Tanggal Jatuh Tempo')
-                    ->required(),
+                    ->required()
+                    ->minDate(now()), // Pastikan tidak bisa pilih tanggal di masa lalu
+
+                // Tambahkan field Xendit External ID
+                TextInput::make('xendit_external_id')
+                    ->label('Xendit External ID')
+                    ->disabled()
+                    ->helperText('Akan diisi otomatis saat membuat invoice di Xendit'),
+
+                // Tambahkan field Xendit ID
+                TextInput::make('xendit_id')
+                    ->label('Xendit ID')
+                    ->disabled()
+                    ->helperText('Akan diisi otomatis saat pembayaran'),
+
+                // Optional: Payment Link
+                TextInput::make('payment_link')
+                    ->label('Link Pembayaran')
+                    ->url()
+                    ->disabled()
+                    ->helperText('Link pembayaran yang dibuat oleh Xendit')
             ]);
     }
 
     public static function updateInvoiceData(callable $set, $pelangganId)
     {
-        if ($pelangganId) {
-            $pelanggan = \App\Models\Pelanggan::find($pelangganId);
-            $dataTeknis = \App\Models\DataTeknis::where('pelanggan_id', $pelangganId)->first();
-            $langganan = \App\Models\Langganan::where('pelanggan_id', $pelangganId)->first();
-    
-            if ($pelanggan) {
-                $set('no_telp', $pelanggan->no_telp);
-                $set('email', $pelanggan->email);
-            }
-    
-            if ($dataTeknis) {
-                $set('id_pelanggan', $dataTeknis->id_pelanggan);
-            }
-    
-            if ($langganan) {
-                $hargaLayanan = \App\Models\HargaLayanan::where('id_brand', $langganan->id_brand)->first();
-                if ($hargaLayanan) {
-                    $set('brand', $hargaLayanan->brand);
-                    $set('total_harga', $langganan->total_harga_layanan_x_pajak);
-                }
-            }
-        }
+        // Gunakan query builder untuk mengurangi jumlah query
+        $pelanggan = Pelanggan::findOrFail($pelangganId);
+        $dataTeknis = DataTeknis::where('pelanggan_id', $pelangganId)->firstOrFail();
+        $langganan = Langganan::where('pelanggan_id', $pelangganId)->firstOrFail();
+        
+        // Set data pelanggan
+        $set('no_telp', $pelanggan->no_telp);
+        $set('email', $pelanggan->email);
+        $set('id_pelanggan', $dataTeknis->id_pelanggan);
+
+        // Ambil harga layanan dengan satu query
+        $hargaLayanan = HargaLayanan::where('id_brand', $langganan->id_brand)->firstOrFail();
+        $set('brand', $hargaLayanan->brand);
+        $set('total_harga', $langganan->total_harga_layanan_x_pajak);
     }
-    
 
+    public static function table(Table $table): Table
+    {
+        return $table
+            ->columns([
+                TextColumn::make('invoice_number')
+                    ->label('Nomor Invoice')
+                    ->searchable()
+                    ->sortable(),
 
-    public static function table(Tables\Table $table): Tables\Table
-{
-    return $table
-        ->columns([
-            TextColumn::make('invoice_number')->label('Nomor Invoice')->sortable(),
-            TextColumn::make('pelanggan.nama')->label('Pelanggan')->sortable(),
+                TextColumn::make('pelanggan.nama')
+                    ->label('Pelanggan')
+                    ->searchable()
+                    ->sortable(),
 
-            // 🔥 Tampilkan Nama Brand Bukan ID
-            TextColumn::make('brand')
-                ->label('Brand')
-                ->formatStateUsing(fn ($state) => HargaLayanan::where('id_brand', $state)->value('brand'))
-                ->sortable()
-                ->searchable(),
+                TextColumn::make('brand')
+                    ->label('Brand')
+                    ->getStateUsing(fn ($record) => 
+                        HargaLayanan::where('id_brand', $record->brand)->value('brand') ?? $record->brand
+                    )
+                    ->searchable()
+                    ->sortable(),
 
-            TextColumn::make('total_harga')->label('Total Harga')->money('IDR')->sortable(),
-            TextColumn::make('tgl_invoice')->label('Tanggal Invoice')->date(),
-            TextColumn::make('tgl_jatuh_tempo')->label('Tanggal Jatuh Tempo')->date(),
+                TextColumn::make('total_harga')
+                    ->label('Total Harga')
+                    ->money('IDR')
+                    ->sortable(),
 
-            BadgeColumn::make('status_invoice')
-                ->label('Status Pembayaran')
-                ->formatStateUsing(fn ($state) => match ($state) {
-                    'Belum Dibayar' => 'Belum Dibayar',
-                    'Lunas' => 'Lunas',
-                    'Kadaluarsa' => 'Kadaluarsa',
-                    default => 'Tidak Diketahui',
-                })
-                ->color(fn ($state) => match ($state) {
-                    'Belum Dibayar' => 'warning',
-                    'Lunas' => 'success',
-                    'Kadaluarsa' => 'danger',
-                    default => 'gray',
-                }),
-        ])
-        ->actions([
-            EditAction::make(),
-            DeleteAction::make(),
-        ]);
-}
+                TextColumn::make('tgl_invoice')
+                    ->label('Tanggal Invoice')
+                    ->date()
+                    ->sortable(),
 
+                TextColumn::make('tgl_jatuh_tempo')
+                    ->label('Tanggal Jatuh Tempo')
+                    ->date()
+                    ->sortable(),
+
+                TextColumn::make('status_invoice')
+                    ->label('Status Pembayaran')
+                    ->badge()
+                    ->color(fn ($state) => match ($state) {
+                        'Menunggu Pembayaran' => 'warning',
+                        'Lunas' => 'success',
+                        'Kadaluarsa' => 'danger',
+                        'Selesai' => 'primary',
+                        default => 'gray',
+                    }),
+
+                // Tambahkan kolom Xendit External ID
+                TextColumn::make('xendit_external_id')
+                    ->label('Xendit External ID')
+                    ->searchable()
+                    ->toggleable(isToggledHiddenByDefault: true), // Bisa disembunyikan
+
+                // Tambahkan kolom Xendit ID
+                TextColumn::make('xendit_id')
+                    ->label('Xendit ID')
+                    ->searchable()
+                    ->toggleable(isToggledHiddenByDefault: true), // Bisa disembunyikan
+
+                // Optional: Kolom Payment Link
+                TextColumn::make('payment_link')
+                    ->label('Link Pembayaran')
+                    ->url(fn ($record) => $record->payment_link ?? '')
+                    ->toggleable(isToggledHiddenByDefault: true)
+            ])
+            ->actions([
+                EditAction::make(),
+                DeleteAction::make(),
+                // Optional: Tambahkan action untuk membuka payment link
+                Tables\Actions\Action::make('open_payment_link')
+                    ->label('Buka Link Pembayaran')
+                    ->icon('heroicon-o-link')
+                    ->url(fn ($record) => $record->payment_link ?? '')
+                    ->openUrlInNewTab()
+                    ->visible(fn ($record) => !empty($record->payment_link)),
+            ])
+            ->defaultSort('created_at', 'desc'); // Urutkan berdasarkan invoice terbaru
+    }
 
     public static function getPages(): array
     {
         return [
-            'index' => Pages\ListInvoices::route('/'),
-            'create' => Pages\CreateInvoice::route('/create'),
-            'edit' => Pages\EditInvoice::route('/{record}/edit'),
+            'index' => InvoiceResource\Pages\ListInvoices::route('/'),
+            'create' => InvoiceResource\Pages\CreateInvoice::route('/create'),
+            'edit' => InvoiceResource\Pages\EditInvoice::route('/{record}/edit'),
         ];
     }
 }

@@ -15,66 +15,78 @@ use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Actions\EditAction;
 use Filament\Tables\Actions\DeleteAction;
+use Filament\Tables\Actions\CreateAction;
 use Filament\Tables\Actions\DeleteBulkAction;
+use Illuminate\Support\Facades\Log;
 
 class LanggananResource extends Resource
 {
     protected static ?string $model = Langganan::class;
-
     protected static ?string $navigationLabel = 'Langganan / Paket';
-    protected static ?string $navigationIcon = 'heroicon-o-users';
-    protected static ?string $navigationGroup = 'FTTH'; // Mengelompokkan dalam grup "FTTH"
+    protected static ?string $navigationIcon = 'heroicon-o-wifi';
+    protected static ?string $navigationGroup = 'Layanan';
+    protected static ?string $slug = 'langganan';
+    protected static ?string $modelLabel = 'Langganan';
+    protected static ?string $pluralModelLabel = 'Daftar Langganan';
 
+    /**
+     * Definisi formulir untuk membuat/edit langganan
+     */
     public static function form(Form $form): Form
     {
         return $form
             ->schema([
                 Select::make('pelanggan_id')
-                    ->label('Pelanggan')
-                    ->options(Pelanggan::pluck('nama', 'id'))
+                    ->label('Nama Pelanggan')
+                    ->relationship('pelanggan', 'nama')
                     ->searchable()
-                    ->required(),
+                    ->preload()
+                    ->required()
+                    ->columnSpan(2),
 
                 Select::make('id_brand')
-                    ->label('Brand')
-                    ->options(HargaLayanan::pluck('brand', 'id_brand'))
+                    ->label('Brand Layanan')
+                    ->relationship('hargaLayanan', 'brand')
                     ->searchable()
-                    ->live()
-                    ->required(),
+                    ->preload()
+                    ->required()
+                    ->live(),
 
                 Select::make('layanan')
-                    ->label('Layanan')
+                    ->label('Paket Layanan')
                     ->options([
                         '10 Mbps' => '10 Mbps',
-                        '20 Mbps' => '20 Mbps',
+                        '20 Mbps' => '20 Mbps', 
                         '30 Mbps' => '30 Mbps',
                         '50 Mbps' => '50 Mbps',
                     ])
-                    ->live()
-                    ->required(),
+                    ->required()
+                    ->live(),
 
                 TextInput::make('total_harga_layanan_x_pajak')
-                    ->label('Total Harga (Pajak)')
+                    ->label('Total Harga (Termasuk Pajak)')
                     ->numeric()
-                    ->default(0)
+                    ->prefix('Rp')
                     ->disabled()
                     ->dehydrated(false)
                     ->reactive()
-                    ->afterStateUpdated(fn ($state, callable $set, $get) => self::updateTotalHarga($set, $get)),
-            ]);
+                    ->afterStateUpdated(fn ($state, callable $set, $get) => 
+                        self::updateTotalHarga($set, $get))
+            ])->columns(2);
     }
 
+    /**
+     * Metode untuk menghitung total harga berdasarkan layanan dan brand
+     */
     public static function updateTotalHarga(callable $set, callable $get)
     {
-        $brandId = $get('id_brand');
-        $layanan = $get('layanan');
+        try {
+            $brandId = $get('id_brand');
+            $layanan = $get('layanan');
 
-        if ($brandId && $layanan) {
-            // Ambil harga layanan berdasarkan Brand
-            $hargaLayanan = HargaLayanan::find($brandId);
+            if ($brandId && $layanan) {
+                $hargaLayanan = HargaLayanan::findOrFail($brandId);
 
-            if ($hargaLayanan) {
-                // Ambil harga sesuai layanan
                 $harga = match ($layanan) {
                     '10 Mbps' => $hargaLayanan->harga_10mbps,
                     '20 Mbps' => $hargaLayanan->harga_20mbps,
@@ -83,58 +95,72 @@ class LanggananResource extends Resource
                     default => 0,
                 };
 
-                // Hitung harga setelah pajak
                 $pajak = ($hargaLayanan->pajak / 100) * $harga;
                 $totalHarga = $harga + $pajak;
 
-                // Set total harga ke field
                 $set('total_harga_layanan_x_pajak', $totalHarga);
             }
+        } catch (\Exception $e) {
+            Log::error('Gagal menghitung total harga', [
+                'error' => $e->getMessage(),
+                'brand_id' => $get('id_brand'),
+                'layanan' => $get('layanan')
+            ]);
         }
     }
 
+    /**
+     * Definisi kolom tabel
+     */
     public static function table(Table $table): Table
     {
         return $table
             ->columns([
                 TextColumn::make('pelanggan.nama')
                     ->label('Pelanggan')
-                    ->sortable()
-                    ->searchable(),
+                    ->searchable()
+                    ->sortable(),
 
                 TextColumn::make('hargaLayanan.brand')
                     ->label('Brand')
-                    ->sortable()
-                    ->searchable(),
+                    ->searchable()
+                    ->sortable(),
 
                 TextColumn::make('layanan')
-                    ->label('Layanan')
+                    ->label('Paket')
+                    ->badge()
+                    ->color('primary')
                     ->sortable(),
 
                 TextColumn::make('total_harga_layanan_x_pajak')
-                    ->label('Total Harga (Pajak)')
-                    ->sortable()
-                    ->money('IDR'),
+                    ->label('Total Harga')
+                    ->money('IDR')
+                    ->sortable(),
 
                 TextColumn::make('created_at')
-                    ->label('Dibuat Pada')
-                    ->dateTime(),
+                    ->label('Dibuat')
+                    ->dateTime('d M Y')
+                    ->sortable()
+                    ->toggleable(isToggledHiddenByDefault: true)
             ])
             ->filters([
                 SelectFilter::make('id_brand')
                     ->label('Filter Brand')
                     ->relationship('hargaLayanan', 'brand')
-                    ->searchable(),
             ])
             ->actions([
                 EditAction::make(),
-                DeleteAction::make(),
+                DeleteAction::make()
             ])
             ->bulkActions([
-                DeleteBulkAction::make(),
-            ]);
+                DeleteBulkAction::make()
+            ])
+            ->defaultSort('created_at', 'desc');
     }
 
+    /**
+     * Definisi halaman-halaman resource
+     */
     public static function getPages(): array
     {
         return [

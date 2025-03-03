@@ -1,4 +1,5 @@
 <?php
+
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
@@ -30,6 +31,10 @@ return new class extends Migration {
             $table->date('tgl_invoice')->default(now()); // Tanggal Invoice Dibuat
             $table->date('tgl_jatuh_tempo'); // Tanggal Jatuh Tempo
 
+            // 🔹 Link Pembayaran dan Status Invoice
+            $table->text('payment_link')->nullable(); // Link Pembayaran dari Xendit
+            $table->string('status_invoice', 50)->default('Belum Dibayar'); // Status Pembayaran Invoice
+
             $table->timestamps();
         });
     }
@@ -39,4 +44,3 @@ return new class extends Migration {
         Schema::dropIfExists('invoices');
     }
 };
-

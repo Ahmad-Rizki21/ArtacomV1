@@ -4,28 +4,30 @@ use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
-return new class extends Migration
-{
-    /**
-     * Run the migrations.
-     */
+return new class extends Migration {
     public function up(): void
     {
         Schema::table('invoices', function (Blueprint $table) {
-            $table->string('payment_link')->nullable()->after('total_harga'); // 🔹 Simpan link dari Xendit
-            $table->enum('status_invoice', ['Belum Dibayar', 'Lunas', 'Kadaluarsa'])
-                ->default('Belum Dibayar')
-                  ->after('payment_link'); // 🔹 Status Pembayaran
+            if (!Schema::hasColumn('invoices', 'payment_link')) {
+                $table->text('payment_link')->nullable(); // Link Pembayaran dari Xendit
+            }
+
+            if (!Schema::hasColumn('invoices', 'status_invoice')) {
+                $table->string('status_invoice', 50)->default('Belum Dibayar'); // Status Pembayaran Invoice
+            }
         });
     }
 
-    /**
-     * Reverse the migrations.
-     */
     public function down(): void
     {
         Schema::table('invoices', function (Blueprint $table) {
-            $table->dropColumn(['payment_link', 'status_invoice']);
+            if (Schema::hasColumn('invoices', 'payment_link')) {
+                $table->dropColumn('payment_link');
+            }
+
+            if (Schema::hasColumn('invoices', 'status_invoice')) {
+                $table->dropColumn('status_invoice');
+            }
         });
     }
 };
