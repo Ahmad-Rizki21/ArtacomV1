@@ -13,6 +13,13 @@ use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Actions\EditAction;
 use Filament\Tables\Actions\DeleteAction;
 use Filament\Tables\Actions\DeleteBulkAction;
+use Filament\Notifications\Notification;
+
+
+
+
+
+
 
 class PelangganResource extends Resource
 {
@@ -22,6 +29,7 @@ class PelangganResource extends Resource
     protected static ?string $navigationIcon = 'heroicon-o-user-group';
     protected static ?string $navigationGroup = 'FTTH'; // Mengelompokkan dalam grup "FTTH"
 
+
     public static function form(Form $form): Form
     {
         return $form
@@ -30,7 +38,7 @@ class PelangganResource extends Resource
                     ->label('No. KTP')
                     ->required()
                     ->maxLength(16)
-                    ->unique()
+                    ->unique(ignoreRecord: true)
                     ->numeric()
                     ->placeholder('Masukkan No. KTP (16 digit)'),
 
@@ -107,7 +115,22 @@ class PelangganResource extends Resource
             ->filters([]) // Tambahkan filter jika diperlukan
             ->actions([
                 EditAction::make(),
-                DeleteAction::make(),
+                // DeleteAction::make(),
+                DeleteAction::make()
+                    ->requiresConfirmation()
+                    ->modalHeading('Konfirmasi Hapus Data Pelanggan')
+                    ->modalDescription('Apakah Anda yakin ingin menghapus data ini? Tindakan ini tidak dapat dibatalkan.')
+                    ->modalSubmitActionLabel('Ya, Hapus')
+                    ->modalCancelActionLabel('Batal')
+                    ->successNotificationTitle('🗑️ Pelanggan Berhasil Dihapus!')
+                    ->after(function () {
+                        \Filament\Notifications\Notification::make()
+                            ->success()
+                            ->title('🗑️ Data Pelanggan Telah Dihapus!')
+                            ->body('Pelanggan ini telah dihapus secara permanen.')
+                            ->send();
+                    }),
+
             ])
             ->bulkActions([
                 DeleteBulkAction::make(),
@@ -122,4 +145,6 @@ class PelangganResource extends Resource
             'edit' => Pages\EditPelanggan::route('/{record}/edit'),
         ];
     }
+
+
 }

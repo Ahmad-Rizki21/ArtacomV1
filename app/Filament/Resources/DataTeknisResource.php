@@ -49,7 +49,6 @@ class DataTeknisResource extends Resource
 
                 TextInput::make('password_pppoe')
                     ->label('Password PPPoE')
-                    ->password()
                     ->required(),
 
                 TextInput::make('ip_pelanggan')
@@ -105,7 +104,20 @@ class DataTeknisResource extends Resource
             ->filters([]) // Tambahkan filter jika diperlukan
             ->actions([
                 EditAction::make(),
-                DeleteAction::make(),
+                DeleteAction::make()
+                    ->requiresConfirmation()
+                    ->modalHeading('Konfirmasi Hapus Data Teknis')
+                    ->modalDescription('Apakah Anda yakin ingin menghapus data ini? Tindakan ini tidak dapat dibatalkan.')
+                    ->modalSubmitActionLabel('Ya, Hapus')
+                    ->modalCancelActionLabel('Batal')
+                    ->successNotificationTitle('🗑️ Data Teknis Berhasil Dihapus!')
+                    ->after(function () {
+                        \Filament\Notifications\Notification::make()
+                            ->success()
+                            ->title('🗑️ Data Teknis Telah Dihapus!')
+                            ->body('Data Teknis ini telah dihapus secara permanen.')
+                            ->send();
+                    }),
             ])
             ->bulkActions([
                 DeleteBulkAction::make(),
