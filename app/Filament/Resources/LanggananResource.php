@@ -151,6 +151,19 @@ class LanggananResource extends Resource
             ->actions([
                 EditAction::make(),
                 DeleteAction::make()
+                    ->requiresConfirmation()
+                    ->modalHeading('Konfirmasi Hapus Data Berlangganan')
+                    ->modalDescription('Apakah Anda yakin ingin menghapus data ini? Tindakan ini tidak dapat dibatalkan.')
+                    ->modalSubmitActionLabel('Ya, Hapus')
+                    ->modalCancelActionLabel('Batal')
+                    ->successNotificationTitle('🗑️ Pelanggan Berhasil Dihapus!')
+                    ->after(function () {
+                        \Filament\Notifications\Notification::make()
+                            ->success()
+                            ->title('🗑️ Data Berlangganan Telah Dihapus!')
+                            ->body('Pelanggan ini telah dihapus secara permanen.')
+                            ->send();
+                    }),
             ])
             ->bulkActions([
                 DeleteBulkAction::make()

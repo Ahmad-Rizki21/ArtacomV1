@@ -203,7 +203,20 @@ class InvoiceResource extends Resource
             ])
             ->actions([
                 EditAction::make(),
-                DeleteAction::make(),
+                DeleteAction::make()
+                    ->requiresConfirmation()
+                    ->modalHeading('Konfirmasi Hapus Invoice')
+                    ->modalDescription('Apakah Anda yakin ingin menghapus invoice ini? Tindakan ini tidak dapat dibatalkan.')
+                    ->modalSubmitActionLabel('Ya, Hapus')
+                    ->modalCancelActionLabel('Batal')
+                    ->successNotificationTitle('🗑️ Invoice Berhasil Dihapus!')
+                    ->after(function () {
+                        \Filament\Notifications\Notification::make()
+                            ->success()
+                            ->title('🗑️ Invoice Telah Dihapus!')
+                            ->body('Invoice ini telah dihapus secara permanen.')
+                            ->send();
+                    }),
                 // Optional: Tambahkan action untuk membuka payment link
                 Tables\Actions\Action::make('open_payment_link')
                     ->label('Buka Link Pembayaran')
