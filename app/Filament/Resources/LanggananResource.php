@@ -9,15 +9,18 @@ use App\Models\HargaLayanan;
 use Filament\Forms\Form;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
+use Filament\Forms\Components\DatePicker;
 use Filament\Resources\Resource;
 use Filament\Tables\Table;
 use Filament\Tables\Columns\TextColumn;
+use Filament\Tables\Columns\BadgeColumn;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Actions\EditAction;
 use Filament\Tables\Actions\DeleteAction;
 use Filament\Tables\Actions\CreateAction;
 use Filament\Tables\Actions\DeleteBulkAction;
 use Illuminate\Support\Facades\Log;
+use Carbon\Carbon;
 
 class LanggananResource extends Resource
 {
@@ -42,7 +45,12 @@ class LanggananResource extends Resource
                     ->searchable()
                     ->preload()
                     ->required()
-                    ->columnSpan(2),
+                    ->columnSpan(2)
+                    ->live()
+                    ->afterStateUpdated(function ($state, callable $set) {
+                        // Reset tanggal jatuh tempo saat pelanggan berubah
+                        $set('tgl_jatuh_tempo', null);
+                    }),
 
                 Select::make('id_brand')
                     ->label('Brand Layanan')
@@ -71,7 +79,17 @@ class LanggananResource extends Resource
                     ->dehydrated(false)
                     ->reactive()
                     ->afterStateUpdated(fn ($state, callable $set, $get) => 
-                        self::updateTotalHarga($set, $get))
+                        self::updateTotalHarga($set, $get)),
+
+                DatePicker::make('tgl_jatuh_tempo')
+                    ->label('Tanggal Jatuh Tempo')
+                    ->default(function (callable $get) {
+                        // Hitung tanggal jatuh tempo 5 hari dari hari ini
+                        return now()->addDays(5);
+                    })
+                    ->minDate(now())
+                    ->required()
+                    ->helperText('Tentukan tanggal jatuh tempo pembayaran')
             ])->columns(2);
     }
 
@@ -136,6 +154,20 @@ class LanggananResource extends Resource
                     ->label('Total Harga')
                     ->money('IDR')
                     ->sortable(),
+
+                TextColumn::make('tgl_jatuh_tempo')
+                    ->label('Tanggal Jatuh Tempo')
+                    ->date('d M Y')
+                    ->sortable(),
+
+                TextColumn::make('user_status')
+                    ->label('Status User')
+                    ->badge()
+                    ->color(fn (string $state): string => match ($state) {
+                        'Aktif' => 'success',
+                        'Suspend' => 'danger',
+                        default => 'gray',
+                    }),
 
                 TextColumn::make('created_at')
                     ->label('Dibuat')

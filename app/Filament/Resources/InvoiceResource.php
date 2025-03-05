@@ -23,6 +23,7 @@ use Filament\Tables\Actions\EditAction;
 use Filament\Tables\Actions\DeleteAction;
 use Filament\Tables\Columns\Column;
 use Illuminate\Support\Facades\Log;
+use Carbon\Carbon;
 
 class InvoiceResource extends Resource
 {
@@ -33,6 +34,11 @@ class InvoiceResource extends Resource
 
     protected static ?string $slug = 'invoices';
     protected static ?string $modelLabel = 'Invoice';
+
+
+    
+
+
 
     public static function form(Form $form): Form
     {
@@ -93,10 +99,18 @@ class InvoiceResource extends Resource
                     ->default(now())
                     ->required(),
 
-                DatePicker::make('tgl_jatuh_tempo')
+                    DatePicker::make('tgl_jatuh_tempo')
                     ->label('Tanggal Jatuh Tempo')
                     ->required()
-                    ->minDate(now()), // Pastikan tidak bisa pilih tanggal di masa lalu
+                    ->default(function (callable $get) {
+                        // Ambil tanggal invoice
+                        $invoiceDate = $get('tgl_invoice') ?? now();
+                        
+                        // Kembalikan 1 bulan setelah tanggal invoice
+                        return Carbon::parse($invoiceDate)->addMonth();
+                    })
+                    ->minDate(fn ($get) => $get('tgl_invoice') ?? now())
+                    ->helperText('Tanggal jatuh tempo otomatis dihitung 1 bulan setelah tanggal invoice'),
 
                 // Tambahkan field Xendit External ID
                 TextInput::make('xendit_external_id')
@@ -119,9 +133,11 @@ class InvoiceResource extends Resource
             ]);
     }
 
-    public static function updateInvoiceData(callable $set, $pelangganId)
-    {
-        // Gunakan query builder untuk mengurangi jumlah query
+   
+     // Method untuk mengupdate data invoice berdasarkan pelanggan yang dipilih
+     public static function updateInvoiceData(callable $set, $pelangganId)
+{
+    try {
         $pelanggan = Pelanggan::findOrFail($pelangganId);
         $dataTeknis = DataTeknis::where('pelanggan_id', $pelangganId)->firstOrFail();
         $langganan = Langganan::where('pelanggan_id', $pelangganId)->firstOrFail();
@@ -131,11 +147,25 @@ class InvoiceResource extends Resource
         $set('email', $pelanggan->email);
         $set('id_pelanggan', $dataTeknis->id_pelanggan);
 
-        // Ambil harga layanan dengan satu query
+        // Ambil harga layanan
         $hargaLayanan = HargaLayanan::where('id_brand', $langganan->id_brand)->firstOrFail();
         $set('brand', $hargaLayanan->brand);
         $set('total_harga', $langganan->total_harga_layanan_x_pajak);
+
+        // Set tanggal invoice
+        $invoiceDate = now();
+        $set('tgl_invoice', $invoiceDate);
+
+        // Set tanggal jatuh tempo 1 hari setelah tanggal invoice
+        $tglJatuhTempo = Carbon::parse($invoiceDate)->addDay();
+        $set('tgl_jatuh_tempo', $tglJatuhTempo);
+    } catch (\Exception $e) {
+        Log::error('Error updating invoice data', [
+            'pelanggan_id' => $pelangganId,
+            'error' => $e->getMessage()
+        ]);
     }
+}
 
     public static function table(Table $table): Table
     {
@@ -164,15 +194,15 @@ class InvoiceResource extends Resource
                     ->money('IDR')
                     ->sortable(),
 
-                TextColumn::make('tgl_invoice')
-                    ->label('Tanggal Invoice')
-                    ->date()
-                    ->sortable(),
+                    TextColumn::make('tgl_invoice')
+                ->label('Tanggal Invoice')
+                ->date()
+                ->sortable(),
 
-                TextColumn::make('tgl_jatuh_tempo')
-                    ->label('Tanggal Jatuh Tempo')
-                    ->date()
-                    ->sortable(),
+            TextColumn::make('tgl_jatuh_tempo')
+                ->label('Tanggal Jatuh Tempo')
+                ->date()
+                ->sortable(),
 
                 TextColumn::make('status_invoice')
                     ->label('Status Pembayaran')

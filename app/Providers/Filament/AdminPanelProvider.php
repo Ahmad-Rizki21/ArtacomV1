@@ -61,8 +61,10 @@ class AdminPanelProvider extends PanelProvider
             ])
             ->widgets([
                 \App\Filament\Widgets\StatsDashboard::class,
+                \App\Filament\Widgets\UserStatusStatsWidget::class,
                 \App\Filament\Widgets\LaporanInvoiceChart::class,
-                \App\Filament\Widgets\LaporanPelangganChart::class
+                \App\Filament\Widgets\LaporanPelangganChart::class,
+                \App\Filament\Widgets\UserStatusChart::class
             ])
             ->middleware([
                 EncryptCookies::class,

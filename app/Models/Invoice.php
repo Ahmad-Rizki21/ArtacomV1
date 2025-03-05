@@ -444,12 +444,21 @@ public function updateStatusFromXendit()
     
             // Set status awal
             $invoice->status_invoice = 'Menunggu Pembayaran';
+
+                // Tambahkan logika untuk menetapkan tanggal jatuh tempo
+            if (!$invoice->tgl_jatuh_tempo) {
+                // Jika tidak ada tanggal jatuh tempo, set 1 bulan dari tanggal invoice
+                $invoice->tgl_jatuh_tempo = Carbon::parse($invoice->tgl_invoice)->addMonth();
+            }
         });
     
         static::created(function ($invoice) {
             Log::info('Invoice Created: ', $invoice->toArray());
             event(new InvoiceCreated($invoice));
         });
+
+
+        
     }
 
     // Relasi ke Pelanggan

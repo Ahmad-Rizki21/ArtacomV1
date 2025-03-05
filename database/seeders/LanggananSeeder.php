@@ -2,24 +2,33 @@
 
 namespace Database\Seeders;
 
-use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
+use Illuminate\Support\Facades\DB;
+use Carbon\Carbon;
 
 class LanggananSeeder extends Seeder
 {
     /**
      * Run the database seeds.
      */
-    public function run()
-{
-    $pelanggan = \App\Models\Pelanggan::first(); // Ambil pelanggan pertama
-    $hargaLayanan = \App\Models\HargaLayanan::first(); // Ambil harga layanan pertama
+    public function run(): void
+    {
+        // Ambil data langganan yang sudah ada
+        $langganans = DB::table('langganan')->get();
 
-    $pelanggan->langganan()->create([
-        'id_brand' => $hargaLayanan->id,
-        'layanan' => '10 Mbps',
-        'total_harga_layanan_x_pajak' => 165000,
-    ]);
-}
+        foreach ($langganans as $langganan) {
+            // Gunakan tanggal created_at sebagai tanggal berlangganan
+            $tanggalBerlangganan = Carbon::parse($langganan->created_at);
 
+            // Hitung tanggal jatuh tempo (bulan berikutnya, pada tanggal yang sama)
+            $tanggalJatuhTempo = $tanggalBerlangganan->copy()->addMonth();
+
+            // Update data langganan dengan tanggal jatuh tempo
+            DB::table('langganan')
+                ->where('id', $langganan->id)
+                ->update([
+                    'tgl_jatuh_tempo' => $tanggalJatuhTempo
+                ]);
+        }
+    }
 }
