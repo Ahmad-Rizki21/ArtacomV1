@@ -14,10 +14,22 @@ class Kernel extends ConsoleKernel
      * @param \Illuminate\Console\Scheduling\Schedule $schedule
      * @return void
      */
+    // protected function schedule(Schedule $schedule)
+    // {
+    //     // Menjadwalkan pengecekan status invoice setiap 5 menit
+    //     $schedule->job(new CheckInvoiceStatus())->everyFiveMinutes();
+
+    // }
+
     protected function schedule(Schedule $schedule)
     {
-        // Menjadwalkan pengecekan status invoice setiap 5 menit
-        $schedule->job(new CheckInvoiceStatus())->everyFiveMinutes();
+        // Jalankan setiap jam 12 malam di production
+        // $schedule->command('invoices:update-expired')->dailyAt('00:00');
+
+        // Untuk testing, jalankan setiap 1 menit
+        $schedule->command('invoices:update-expired')->everyMinute();
+        $schedule->command('invoices:generate-invoices')->everyMinute();
+        // $schedule->command('invoices:generate')->dailyAt('00:00');
     }
 
     /**
@@ -30,5 +42,6 @@ class Kernel extends ConsoleKernel
         $this->load(__DIR__.'/Commands');
 
         require base_path('routes/console.php');
+
     }
 }

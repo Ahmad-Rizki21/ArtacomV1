@@ -48,7 +48,9 @@ class AdminPanelProvider extends PanelProvider
             ->sidebarCollapsibleOnDesktop()
             ->sidebarFullyCollapsibleOnDesktop()
             ->sidebarWidth('15rem')
-            ->favicon(asset('images/artacom.png'))
+            ->favicon(asset('images/resized-image.png'))
+            
+            // ->brandLogo(asset('images/jelantik.jpeg'))
             ->brandName('Artacom Billing System')
             ->colors([
                 'primary' => Color::Amber,

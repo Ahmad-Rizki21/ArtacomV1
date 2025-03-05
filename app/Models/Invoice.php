@@ -8,11 +8,11 @@ use App\Events\InvoiceCreated;
 use Illuminate\Support\Facades\Log;
 use App\Services\XenditService;
 use Carbon\Carbon;
-
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Invoice extends Model
 {
-    use HasFactory;
+    use HasFactory, SoftDeletes;
 
     protected $table = 'invoices';
 
@@ -33,6 +33,8 @@ class Invoice extends Model
         'paid_amount',
         'paid_at'
     ];
+
+    protected $dates = ['deleted_at']; // ⬅️ Tambahkan ini jika belum ada
 
     protected $casts = [
         'total_harga' => 'decimal:2',

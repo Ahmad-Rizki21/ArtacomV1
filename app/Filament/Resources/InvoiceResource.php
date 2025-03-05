@@ -112,6 +112,8 @@ class InvoiceResource extends Resource
                     ->minDate(fn ($get) => $get('tgl_invoice') ?? now())
                     ->helperText('Tanggal jatuh tempo otomatis dihitung 1 bulan setelah tanggal invoice'),
 
+                    
+
                 // Tambahkan field Xendit External ID
                 TextInput::make('xendit_external_id')
                     ->label('Xendit External ID')
@@ -152,12 +154,12 @@ class InvoiceResource extends Resource
         $set('brand', $hargaLayanan->brand);
         $set('total_harga', $langganan->total_harga_layanan_x_pajak);
 
-        // Set tanggal invoice
+        // Set tanggal invoice ke hari ini
         $invoiceDate = now();
         $set('tgl_invoice', $invoiceDate);
 
-        // Set tanggal jatuh tempo 1 hari setelah tanggal invoice
-        $tglJatuhTempo = Carbon::parse($invoiceDate)->addDay();
+        // Set tanggal jatuh tempo 1 bulan dari tanggal invoice
+        $tglJatuhTempo = Carbon::parse($invoiceDate)->addMonth();
         $set('tgl_jatuh_tempo', $tglJatuhTempo);
     } catch (\Exception $e) {
         Log::error('Error updating invoice data', [

@@ -19,7 +19,7 @@ class Langganan extends Model
         'id_brand',
         'layanan',
         'total_harga_layanan_x_pajak',
-        'tgl_jatuh_tempo', // Tambahkan field baru
+        'tgl_jatuh_tempo',
     ];
 
     // Relasi ke pelanggan
@@ -34,12 +34,11 @@ class Langganan extends Model
         return $this->belongsTo(HargaLayanan::class, 'id_brand', 'id_brand');
     }
 
-    // Add to Langganan model
+    // Relasi ke invoice
     public function invoices()
     {
         return $this->hasMany(Invoice::class, 'pelanggan_id', 'pelanggan_id');
     }
-
 
     // Method untuk menghitung total harga dengan pajak
     public function hitungTotalHarga()
@@ -58,7 +57,6 @@ class Langganan extends Model
             $pajak = ($hargaLayanan->pajak / 100) * $harga;
             $this->total_harga_layanan_x_pajak = $harga + $pajak;
 
-            // Log untuk debugging
             Log::info('Hitung Total Harga Langganan', [
                 'pelanggan_id' => $this->pelanggan_id,
                 'layanan' => $this->layanan,
@@ -73,41 +71,20 @@ class Langganan extends Model
         return 0;
     }
 
-
-      // Tambahkan method untuk mengatur tanggal jatuh tempo
-      public function setTanggalJatuhTempo($tanggalBerlangganan = null)
-{
-    // Gunakan tanggal berlangganan yang diberikan, atau gunakan tanggal saat ini
-    $tanggal = $tanggalBerlangganan ? Carbon::parse($tanggalBerlangganan) : Carbon::now();
-    
-    // Tetapkan tanggal jatuh tempo ke bulan berikutnya, pada tanggal yang sama
-    $this->tgl_jatuh_tempo = $tanggal->copy()->addMonth();
-    
-    return $this;
-}
-  
-
-
-
-    protected static function boot()
+    // Method untuk mengatur tanggal jatuh tempo
+    public function setTanggalJatuhTempo($tanggalBerlangganan = null)
     {
-        parent::boot();
+        $tanggal = $tanggalBerlangganan ? Carbon::parse($tanggalBerlangganan) : Carbon::now();
+        $this->tgl_jatuh_tempo = $tanggal->copy()->addMonth()->startOfMonth();
+        
+        return $this;
+    }
 
-        // Saat membuat langganan baru
-        static::creating(function ($langganan) {
-            $langganan->hitungTotalHarga();
-
-            // Atur tanggal jatuh tempo saat membuat langganan
-            $langganan->setTanggalJatuhTempo();
-        });
-
-        // Saat update langganan
-        static::updating(function ($langganan) {
-            // Jika layanan atau brand berubah, hitung ulang total harga
-            if ($langganan->isDirty(['layanan', 'id_brand'])) {
-                $langganan->hitungTotalHarga();
-            }
-        });
+    // Menambahkan method untuk menghitung tanggal jatuh tempo
+    public function updateTanggalJatuhTempo()
+    {
+        $this->setTanggalJatuhTempo();
+        $this->save();
     }
 
     // Method untuk update manual jika diperlukan
@@ -117,34 +94,39 @@ class Langganan extends Model
         $this->save();
     }
 
-
-    // Add this method to your Langganan model
+    // Get status user berdasarkan invoice terbaru
     public function getUserStatusAttribute()
-{
-    $latestInvoice = $this->invoices()->latest('created_at')->first();
-    
-    if (!$latestInvoice) {
-        return 'Tidak Ada Invoice';
+    {
+        $latestInvoice = $this->invoices()->latest('created_at')->first();
+
+        if (!$latestInvoice) {
+            return 'Tidak Ada Invoice';
+        }
+
+        if (in_array($latestInvoice->status_invoice, ['Selesai', 'Lunas'])) {
+            return 'Aktif';
+        } else {
+            return 'Suspend';
+        }
     }
-    
-    if (in_array($latestInvoice->status_invoice, ['Selesai', 'Lunas'])) {
-        return 'Aktif';
-    } else {
-        return 'Suspend';
+
+    // Boot method untuk penanganan model event
+    protected static function boot()
+    {
+        parent::boot();
+
+        static::creating(function ($langganan) {
+            $langganan->hitungTotalHarga();
+            if (is_null($langganan->tgl_jatuh_tempo)) {
+                $langganan->setTanggalJatuhTempo(); // Menetapkan default tanggal jatuh tempo
+            }
+        });
+
+        static::updating(function ($langganan) {
+            if ($langganan->isDirty(['layanan', 'id_brand'])) {
+                $langganan->hitungTotalHarga();
+                $langganan->setTanggalJatuhTempo();
+            }
+        });
     }
-}
-
-
-// public function setTanggalJatuhTempo($tanggalBerlangganan = null)
-// {
-//     // Gunakan tanggal berlangganan yang diberikan, atau gunakan tanggal saat ini
-//     $tanggal = $tanggalBerlangganan ? Carbon::parse($tanggalBerlangganan) : Carbon::now();
-    
-//     // Tetapkan tanggal jatuh tempo ke bulan berikutnya, pada tanggal yang sama
-//     $this->tgl_jatuh_tempo = $tanggal->copy()->addMonth();
-    
-//     return $this;
-// }
-
-
 }

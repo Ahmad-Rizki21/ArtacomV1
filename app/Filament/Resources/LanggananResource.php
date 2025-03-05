@@ -17,7 +17,6 @@ use Filament\Tables\Columns\BadgeColumn;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Actions\EditAction;
 use Filament\Tables\Actions\DeleteAction;
-use Filament\Tables\Actions\CreateAction;
 use Filament\Tables\Actions\DeleteBulkAction;
 use Illuminate\Support\Facades\Log;
 use Carbon\Carbon;
@@ -45,11 +44,15 @@ class LanggananResource extends Resource
                     ->searchable()
                     ->preload()
                     ->required()
-                    ->columnSpan(2)
                     ->live()
                     ->afterStateUpdated(function ($state, callable $set) {
-                        // Reset tanggal jatuh tempo saat pelanggan berubah
-                        $set('tgl_jatuh_tempo', null);
+                        // Ambil data pelanggan
+                        $pelanggan = Pelanggan::find($state);
+                        
+                        // Set brand default dan harga jika pelanggan ditemukan
+                        if ($pelanggan) {
+                            $set('id_brand', $pelanggan->brand_default ?? null);
+                        }
                     }),
 
                 Select::make('id_brand')
@@ -64,7 +67,7 @@ class LanggananResource extends Resource
                     ->label('Paket Layanan')
                     ->options([
                         '10 Mbps' => '10 Mbps',
-                        '20 Mbps' => '20 Mbps', 
+                        '20 Mbps' => '20 Mbps',
                         '30 Mbps' => '30 Mbps',
                         '50 Mbps' => '50 Mbps',
                     ])
@@ -78,19 +81,17 @@ class LanggananResource extends Resource
                     ->disabled()
                     ->dehydrated(false)
                     ->reactive()
-                    ->afterStateUpdated(fn ($state, callable $set, $get) => 
-                        self::updateTotalHarga($set, $get)),
+                    ->afterStateUpdated(fn ($state, callable $set, $get) => self::updateTotalHarga($set, $get)),
 
+                // Tambahkan opsi manual untuk tanggal jatuh tempo
                 DatePicker::make('tgl_jatuh_tempo')
                     ->label('Tanggal Jatuh Tempo')
-                    ->default(function (callable $get) {
-                        // Hitung tanggal jatuh tempo 5 hari dari hari ini
-                        return now()->addDays(5);
-                    })
-                    ->minDate(now())
-                    ->required()
-                    ->helperText('Tentukan tanggal jatuh tempo pembayaran')
-            ])->columns(2);
+                    ->disabled() // Tidak bisa diedit manual
+                    ->helperText('Tanggal jatuh tempo akan diatur otomatis')
+                    ->afterStateUpdated(function ($state, callable $set) {
+                        $set('tgl_jatuh_tempo', Carbon::now()->addMonth()->startOfMonth()->format('Y-m-d'));
+                    }),
+            ]);
     }
 
     /**
