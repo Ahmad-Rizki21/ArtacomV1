@@ -25,6 +25,7 @@ class PelangganResource extends Resource
 {
     protected static ?string $model = Pelanggan::class;
 
+    
     protected static ?string $navigationLabel = 'Data Pelanggan';
     protected static ?string $navigationIcon = 'heroicon-o-user-group';
     protected static ?string $navigationGroup = 'FTTH'; // Mengelompokkan dalam grup "FTTH"

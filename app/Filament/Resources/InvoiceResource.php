@@ -29,6 +29,8 @@ class InvoiceResource extends Resource
     protected static ?string $model = Invoice::class;
     protected static ?string $navigationIcon = 'heroicon-o-document-text';
     protected static ?string $navigationLabel = 'Invoices';
+    protected static ?string $navigationGroup = 'Billing'; // Mengelompokkan dalam grup "FTTH"
+
     protected static ?string $slug = 'invoices';
     protected static ?string $modelLabel = 'Invoice';
 

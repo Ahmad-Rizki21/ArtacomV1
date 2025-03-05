@@ -6,7 +6,7 @@ use App\Http\Controllers\XenditInvoiceStatusController;
 
 // Halaman utama
 Route::get('/', function () {
-    return view('welcome');
+    return redirect('/admin/login');
 });
 
 // Menampilkan invoice berdasarkan nomor invoice untuk halaman admin atau frontend
