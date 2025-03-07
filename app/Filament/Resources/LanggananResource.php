@@ -85,12 +85,14 @@ class LanggananResource extends Resource
 
                 // Tambahkan opsi manual untuk tanggal jatuh tempo
                 DatePicker::make('tgl_jatuh_tempo')
-                    ->label('Tanggal Jatuh Tempo')
-                    ->disabled() // Tidak bisa diedit manual
-                    ->helperText('Tanggal jatuh tempo akan diatur otomatis')
-                    ->afterStateUpdated(function ($state, callable $set) {
-                        $set('tgl_jatuh_tempo', Carbon::now()->addMonth()->startOfMonth()->format('Y-m-d'));
-                    }),
+                ->label('Tanggal Jatuh Tempo')
+                ->required()
+                ->helperText('Tanggal jatuh tempo akan diatur sesuai kebijakan atau diinput manual oleh admin.')
+                ->afterStateUpdated(function ($state, callable $set) {
+                    // Tanggal jatuh tempo akan diupdate manual oleh admin sesuai kebutuhan
+                    // Anda bisa menambahkan logika di sini jika dibutuhkan
+                }),
+
             ]);
     }
 

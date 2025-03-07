@@ -20,6 +20,7 @@ class Langganan extends Model
         'layanan',
         'total_harga_layanan_x_pajak',
         'tgl_jatuh_tempo',
+        'tgl_invoice_terakhir', // Kolom tanggal invoice terakhir
     ];
 
     // Relasi ke pelanggan
@@ -38,6 +39,17 @@ class Langganan extends Model
     public function invoices()
     {
         return $this->hasMany(Invoice::class, 'pelanggan_id', 'pelanggan_id');
+    }
+
+
+    /**
+     * Method untuk memperbarui tanggal invoice terakhir
+     */
+    public function updateTanggalInvoiceTerakhir()
+    {
+        // Set tanggal invoice terakhir ke tanggal saat ini
+        $this->tgl_invoice_terakhir = Carbon::today();
+        $this->save();
     }
 
     // Method untuk menghitung total harga dengan pajak
@@ -74,11 +86,19 @@ class Langganan extends Model
     // Method untuk mengatur tanggal jatuh tempo
     public function setTanggalJatuhTempo($tanggalBerlangganan = null)
     {
+        // Gunakan tanggal berlangganan yang diberikan, atau gunakan tanggal saat ini
         $tanggal = $tanggalBerlangganan ? Carbon::parse($tanggalBerlangganan) : Carbon::now();
-        $this->tgl_jatuh_tempo = $tanggal->copy()->addMonth()->startOfMonth();
         
+        // Jika tanggal jatuh tempo belum diatur oleh admin, set default tanggal 1 bulan depan
+        if (!$this->tgl_jatuh_tempo) {
+            $this->tgl_jatuh_tempo = $tanggal->copy()->addMonth()->startOfMonth();
+        }
+
+        // Kalkulasi 5 hari sebelum tanggal jatuh tempo untuk pengiriman invoice
+        $tglPengiriman = Carbon::parse($this->tgl_jatuh_tempo)->subDays(5);
         return $this;
     }
+
 
     // Menambahkan method untuk menghitung tanggal jatuh tempo
     public function updateTanggalJatuhTempo()

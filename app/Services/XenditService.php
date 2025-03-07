@@ -12,7 +12,8 @@ class XenditService
 {
     private const BRAND_MAPPING = [
         'ajn-02' => 'Jakinet',
-        'ajn-01' => 'Jelantik'
+        'ajn-01' => 'Jelantik',
+        'ajn-03' => 'Jelantik (Nagrak)'
     ];
 
     private const STATUS_MAP = [
@@ -150,13 +151,24 @@ class XenditService
     private function getApiKeyByBrand(string $brandName): string
     {
         $brandName = strtolower($brandName);
-        $apiKey = env("XENDIT_API_KEY_" . strtoupper($brandName));
 
-        if (!$apiKey) {
-            throw new Exception("API Key tidak ditemukan untuk brand: $brandName");
+        // Khusus untuk Nagrak atau Jelantik Nagrak
+        if (strpos($brandName, 'nagrak') !== false) {
+            return env('XENDIT_API_KEY_JAKINET');  // Menggunakan API key Jakinet untuk Jelantik (Nagrak)
         }
-
-        return $apiKey;
+    
+        // Untuk Jelantik
+        if (strpos($brandName, 'jelantik') !== false) {
+            return env('XENDIT_API_KEY_JELANTIK');
+        }
+    
+        // Untuk Jakinet
+        if (strpos($brandName, 'jakinet') !== false) {
+            return env('XENDIT_API_KEY_JAKINET');
+        }
+    
+        // Fallback ke Jakinet jika tidak dikenali
+        return env('XENDIT_API_KEY_JAKINET');
     }
 
     /**
