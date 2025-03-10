@@ -72,63 +72,150 @@ class LanggananResource extends Resource
                         '50 Mbps' => '50 Mbps',
                     ])
                     ->required()
-                    ->live(),
+                    ->live()
+                    ->afterStateUpdated(function ($state, callable $set, callable $get) {
+                        self::updateTotalHarga($set, $get);  // Menghitung harga otomatis setelah memilih paket layanan
+                    }),
 
-                TextInput::make('total_harga_layanan_x_pajak')
-                    ->label('Total Harga (Termasuk Pajak)')
-                    ->numeric()
-                    ->prefix('Rp')
-                    ->disabled()
-                    ->dehydrated(false)
-                    ->reactive()
-                    ->afterStateUpdated(fn ($state, callable $set, $get) => self::updateTotalHarga($set, $get)),
-
-                // Tambahkan opsi manual untuk tanggal jatuh tempo
-                DatePicker::make('tgl_jatuh_tempo')
-                ->label('Tanggal Jatuh Tempo')
+                    Select::make('metode_pembayaran')
+                ->label('Metode Pembayaran')
+                ->helperText('Pilih metode pembayaran, jika prorate buat otomatis lalu nanti edit ganti ke prorate')
+                ->options([
+                    'otomatis' => 'Otomatis',
+                    'manual' => 'Manual (Prorate)',
+                ])
                 ->required()
-                ->helperText('Tanggal jatuh tempo akan diatur sesuai kebijakan atau diinput manual oleh admin.')
-                ->afterStateUpdated(function ($state, callable $set) {
-                    // Tanggal jatuh tempo akan diupdate manual oleh admin sesuai kebutuhan
-                    // Anda bisa menambahkan logika di sini jika dibutuhkan
+                ->live()
+                ->afterStateUpdated(function ($state, callable $set, callable $get) {
+                    if ($state == 'manual') {
+                        $set('total_harga_layanan_x_pajak', null);
+                    } else {
+                        // Selalu paksa perhitungan ulang saat memilih otomatis
+                        self::updateTotalHarga($set, $get);
+                    }
                 }),
-
+                
+                TextInput::make('total_harga_layanan_x_pajak')
+                ->label('Total Harga (Termasuk Pajak)')
+                ->numeric()
+                ->prefix('Rp')
+                ->required(fn ($get) => $get('metode_pembayaran') == 'manual')
+                ->disabled(fn ($get) => $get('metode_pembayaran') == 'otomatis')
+                ->dehydrated(true) // Ubah ini agar nilai selalu dikirim ke database
+                ->helperText('Masukkan total harga termasuk pajak untuk metode manual'),
+                
+                DatePicker::make('tgl_jatuh_tempo')
+                    ->label('Tanggal Jatuh Tempo')
+                    ->required()
+                    ->helperText('Tentukan tanggal jatuh tempo pembayaran'),
+                
             ]);
     }
 
     /**
      * Metode untuk menghitung total harga berdasarkan layanan dan brand
      */
+    // public static function updateTotalHarga(callable $set, callable $get)
+    // {
+    //     try {
+    //         $metodePembayaran = $get('metode_pembayaran');
+            
+    //         // Jika memilih otomatis, hitung otomatis harga berdasarkan layanan dan brand
+    //         if ($metodePembayaran == 'otomatis') {
+    //             $brandId = $get('id_brand');
+    //             $layanan = $get('layanan');
+    
+    //             if ($brandId && $layanan) {
+    //                 $hargaLayanan = HargaLayanan::findOrFail($brandId);
+    
+    //                 // Mendapatkan harga dasar berdasarkan layanan yang dipilih
+    //                 $harga = match ($layanan) {
+    //                     '10 Mbps' => $hargaLayanan->harga_10mbps,
+    //                     '20 Mbps' => $hargaLayanan->harga_20mbps,
+    //                     '30 Mbps' => $hargaLayanan->harga_30mbps,
+    //                     '50 Mbps' => $hargaLayanan->harga_50mbps,
+    //                     default => 0,
+    //                 };
+    
+    //                 // Menghitung pajak
+    //                 $pajak = ($hargaLayanan->pajak / 100) * $harga;
+    //                 $totalHarga = $harga + $pajak;
+    
+    //                 // Set total harga jika memilih otomatis
+    //                 $set('total_harga_layanan_x_pajak', $totalHarga);
+    //             }
+    //         } else if ($metodePembayaran == 'manual') {
+    //             // Jika memilih manual, harga harus diinput manual oleh admin
+    //             $manualHarga = $get('total_harga_layanan_x_pajak');
+                
+    //             // Pastikan nilai manual di-set langsung tanpa perhitungan otomatis
+    //             $set('total_harga_layanan_x_pajak', $manualHarga);
+    //         }
+    //     } catch (\Exception $e) {
+    //         Log::error('Gagal menghitung total harga', [
+    //             'error' => $e->getMessage(),
+    //             'metode_pembayaran' => $get('metode_pembayaran')
+    //         ]);
+    //     }
+    // }
+
+
+
     public static function updateTotalHarga(callable $set, callable $get)
     {
         try {
-            $brandId = $get('id_brand');
-            $layanan = $get('layanan');
-
-            if ($brandId && $layanan) {
-                $hargaLayanan = HargaLayanan::findOrFail($brandId);
-
-                $harga = match ($layanan) {
-                    '10 Mbps' => $hargaLayanan->harga_10mbps,
-                    '20 Mbps' => $hargaLayanan->harga_20mbps,
-                    '30 Mbps' => $hargaLayanan->harga_30mbps,
-                    '50 Mbps' => $hargaLayanan->harga_50mbps,
-                    default => 0,
-                };
-
-                $pajak = ($hargaLayanan->pajak / 100) * $harga;
-                $totalHarga = $harga + $pajak;
-
-                $set('total_harga_layanan_x_pajak', $totalHarga);
+            $metodePembayaran = $get('metode_pembayaran');
+            
+            // Jika memilih otomatis, hitung otomatis harga berdasarkan layanan dan brand
+            if ($metodePembayaran == 'otomatis') {
+                $brandId = $get('id_brand');
+                $layanan = $get('layanan');
+    
+                if ($brandId && $layanan) {
+                    $hargaLayanan = HargaLayanan::findOrFail($brandId);
+    
+                    // Mendapatkan harga dasar berdasarkan layanan yang dipilih
+                    $harga = match ($layanan) {
+                        '10 Mbps' => $hargaLayanan->harga_10mbps,
+                        '20 Mbps' => $hargaLayanan->harga_20mbps,
+                        '30 Mbps' => $hargaLayanan->harga_30mbps,
+                        '50 Mbps' => $hargaLayanan->harga_50mbps,
+                        default => 0,
+                    };
+    
+                    // Menghitung pajak
+                    $pajak = ($hargaLayanan->pajak / 100) * $harga;
+                    $totalHarga = $harga + $pajak;
+    
+                    // Debug - log nilai yang dihitung
+                    Log::info('Hitung Total Harga di Form', [
+                        'brand_id' => $brandId,
+                        'layanan' => $layanan, 
+                        'harga_dasar' => $harga,
+                        'pajak' => $pajak,
+                        'total_harga' => $totalHarga
+                    ]);
+    
+                    // Set total harga jika memilih otomatis - pastikan nilainya diatur dengan benar
+                    $set('total_harga_layanan_x_pajak', $totalHarga);
+                } else {
+                    // Log jika brand atau layanan belum dipilih
+                    Log::warning('Brand atau layanan belum dipilih', [
+                        'brand_id' => $brandId,
+                        'layanan' => $layanan
+                    ]);
+                }
             }
         } catch (\Exception $e) {
             Log::error('Gagal menghitung total harga', [
                 'error' => $e->getMessage(),
-                'brand_id' => $get('id_brand'),
-                'layanan' => $get('layanan')
+                'metode_pembayaran' => $get('metode_pembayaran')
             ]);
         }
     }
+
+
+
 
     /**
      * Definisi kolom tabel
