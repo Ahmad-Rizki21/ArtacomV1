@@ -13,8 +13,9 @@ class Kernel extends ConsoleKernel
     protected function schedule(Schedule $schedule): void
     {
         // Untuk development - jalankan setiap menit
-        $schedule->command('invoice:generate-due')
-        ->everyMinute();
+        $schedule->command('invoice:generate-due --days=5')
+        ->everyMinute()
+        ->appendOutputTo(storage_path('logs/invoice-scheduler.log'));
                  
         // Uncomment ini untuk production nanti
         // $schedule->command('invoice:generate-due')
