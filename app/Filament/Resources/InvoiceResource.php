@@ -24,6 +24,7 @@ use Filament\Tables\Actions\DeleteAction;
 use Filament\Tables\Columns\Column;
 use Illuminate\Support\Facades\Log;
 use Carbon\Carbon;
+use Filament\Notifications\Notification;
 
 class InvoiceResource extends Resource
 {
@@ -36,7 +37,6 @@ class InvoiceResource extends Resource
     protected static ?string $modelLabel = 'Invoice';
 
 
-    
 
 
 
@@ -168,6 +168,19 @@ class InvoiceResource extends Resource
         ]);
     }
 }
+
+
+public static function afterCreate($record)
+    {
+        // Cek jika invoice berhasil disimpan
+        if ($record instanceof Invoice) {
+            Notification::make()
+                ->success()
+                ->title('📄 Invoice Berhasil Dibuat!')
+                ->body('Invoice baru telah berhasil dibuat.')
+                ->send();
+        }
+    }
 
     public static function table(Table $table): Table
     {

@@ -23,7 +23,6 @@ class XenditService
         'EXPIRED' => 'Kadaluarsa'
     ];
 
-
     /**
      * Memproses webhook yang diterima dari Xendit
      *
@@ -39,7 +38,9 @@ class XenditService
             }
 
             // Cari invoice berdasarkan external_id yang diterima dari webhook
-            $invoice = Invoice::where('xendit_external_id', $data['external_id'])->first();
+            $invoice = Invoice::where('xendit_external_id', $data['external_id'])
+                             ->orWhere('invoice_number', $data['external_id'])
+                             ->first();
 
             if (!$invoice) {
                 throw new Exception('Invoice tidak ditemukan');
@@ -77,16 +78,33 @@ class XenditService
         }
     }
 
-
     /**
      * Membuat invoice di Xendit
      *
      * @param Invoice $invoice
+     * @param string|null $traceId
      * @return array
      */
-    public function createInvoice(Invoice $invoice)
+    public function createInvoice(Invoice $invoice, ?string $traceId = null): array
     {
         try {
+            // Logging untuk debugging
+            Log::info('XenditService::createInvoice called', [
+                'invoice_number' => $invoice->invoice_number,
+                'trace_id' => $traceId ?? uniqid('direct_call_', true)
+            ]);
+            
+            // Periksa apakah invoice sudah diproses
+            if (!empty($invoice->payment_link) || !empty($invoice->xendit_id)) {
+                return [
+                    'status' => 'success',
+                    'message' => 'Invoice sudah diproses sebelumnya',
+                    'invoice_url' => $invoice->payment_link,
+                    'xendit_id' => $invoice->xendit_id,
+                    'external_id' => $invoice->xendit_external_id ?? $invoice->invoice_number
+                ];
+            }
+
             // Dapatkan nama brand
             $brandName = $this->getBrandName($invoice->brand);
             
@@ -97,29 +115,42 @@ class XenditService
             $this->validateInvoiceData($invoice);
 
             // Siapkan payload untuk Xendit
-            $data = $this->prepareXenditPayload($invoice);
+            $data = $this->prepareXenditPayload($invoice, $traceId);
 
-            // Kirim permintaan ke Xendit
+            // Kirim permintaan ke Xendit dengan idempotency key
             $url = env('XENDIT_API_URL');
+            $idempotencyKey = 'invoice_' . $invoice->invoice_number;
+            
+            Log::info('Sending request to Xendit with idempotency key', [
+                'invoice_number' => $invoice->invoice_number,
+                'idempotency_key' => $idempotencyKey,
+                'trace_id' => $traceId
+            ]);
+            
             $response = Http::withBasicAuth($apiKey, '')
-                ->timeout(10)
+                ->withHeaders([
+                    'Idempotency-Key' => $idempotencyKey
+                ])
+                ->timeout(15) // Increased timeout
                 ->post($url, $data);
 
             // Log respons untuk debugging
             Log::info('Xendit Invoice Creation', [
                 'invoice_number' => $invoice->invoice_number,
                 'response_status' => $response->status(),
-                'response_data' => $response->json()
+                'response_data' => $response->json(),
+                'trace_id' => $traceId
             ]);
 
             // Proses hasil dari Xendit
-            return $this->processXenditResponse($response, $invoice);
+            return $this->processXenditResponse($response, $invoice, $traceId);
 
         } catch (Exception $e) {
             Log::error('Xendit Invoice Creation Failed', [
                 'invoice_number' => $invoice->invoice_number,
                 'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
+                'trace' => $e->getTraceAsString(),
+                'trace_id' => $traceId
             ]);
 
             return [
@@ -192,9 +223,10 @@ class XenditService
      * Siapkan payload untuk Xendit
      *
      * @param Invoice $invoice
+     * @param string|null $traceId
      * @return array
      */
-    private function prepareXenditPayload(Invoice $invoice): array
+    private function prepareXenditPayload(Invoice $invoice, ?string $traceId = null): array
     {
         return [
             'external_id' => $invoice->invoice_number,
@@ -211,6 +243,9 @@ class XenditService
                 'invoice_reminder' => ['email', 'whatsapp'],
                 'invoice_expired' => ['email', 'whatsapp'],
                 'invoice_paid' => ['email', 'whatsapp'],
+            ],
+            'metadata' => [
+                'trace_id' => $traceId ?? uniqid('xendit_', true)
             ]
         ];
     }
@@ -220,17 +255,19 @@ class XenditService
      *
      * @param \Illuminate\Http\Client\Response $response
      * @param Invoice $invoice
+     * @param string|null $traceId
      * @return array
      * @throws Exception
      */
-    private function processXenditResponse($response, Invoice $invoice): array
+    private function processXenditResponse($response, Invoice $invoice, ?string $traceId = null): array
     {
         if (!$response->successful()) {
             Log::error('Xendit Invoice Creation Failed', [
                 'response' => $response->json(),
-                'status' => $response->status()
+                'status' => $response->status(),
+                'trace_id' => $traceId
             ]);
-            throw new Exception('Gagal membuat invoice di Xendit');
+            throw new Exception('Gagal membuat invoice di Xendit: ' . ($response->json()['message'] ?? 'Unknown error'));
         }
 
         $responseData = $response->json();
@@ -238,23 +275,17 @@ class XenditService
         // Periksa apakah invoice_url ada di response
         if (empty($responseData['invoice_url'])) {
             Log::error('Invoice URL tidak ditemukan', [
-                'response' => $responseData
+                'response' => $responseData,
+                'trace_id' => $traceId
             ]);
             throw new Exception('Invoice URL tidak ditemukan di respons Xendit');
         }
 
-        // Update invoice dengan informasi dari Xendit
-        $invoice->update([
-            'payment_link' => $responseData['invoice_url'],
-            'xendit_id' => $responseData['id'],
-            'xendit_external_id' => $responseData['external_id'],
-            'status_invoice' => self::STATUS_MAP[$responseData['status']] ?? 'Menunggu Pembayaran'
-        ]);
-
         return [
             'status' => 'success',
             'invoice_url' => $responseData['invoice_url'],
-            'xendit_id' => $responseData['id']
+            'xendit_id' => $responseData['id'],
+            'external_id' => $responseData['external_id']
         ];
     }
 

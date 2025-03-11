@@ -12,7 +12,7 @@ return [
 
     'asset_url' => env('ASSET_URL', null),
 
-    'timezone' => env('APP_TIMEZONE', 'UTC'),
+    'timezone' => env('APP_TIMEZONE', 'Asia/Jakarta'),
 
     'locale' => env('APP_LOCALE', 'en'),
 

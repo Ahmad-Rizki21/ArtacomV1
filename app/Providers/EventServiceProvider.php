@@ -21,9 +21,9 @@ class EventServiceProvider extends ServiceProvider
             SendEmailVerificationNotification::class,
         ],
         // Perbaiki referensi listener disini
-        InvoiceCreated::class => [
-            SendInvoiceToXendit::class, // Pastikan ini sesuai dengan nama class yang Anda miliki
-        ],
+        // InvoiceCreated::class => [
+        //     SendInvoiceToXendit::class, // Pastikan ini sesuai dengan nama class yang Anda miliki
+        // ],
     ];
 
     /**
