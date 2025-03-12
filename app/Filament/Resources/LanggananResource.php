@@ -55,13 +55,23 @@ class LanggananResource extends Resource
                         }
                     }),
 
-                Select::make('id_brand')
+                    Select::make('id_brand')
                     ->label('Brand Layanan')
-                    ->relationship('hargaLayanan', 'brand')
+                    ->options(HargaLayanan::pluck('brand', 'id_brand'))
                     ->searchable()
                     ->preload()
                     ->required()
-                    ->live(),
+                    ->live()
+                    ->afterStateUpdated(function ($state, callable $set) {
+                        // Debugging untuk melihat nilai id_brand
+                        Log::info('Selected Brand:', ['id_brand' => $state]);
+                        // Set brand default berdasarkan pelanggan jika ada
+                        $pelanggan = Pelanggan::find($state);
+                        if ($pelanggan) {
+                            $set('id_brand', $pelanggan->brand_default ?? null);
+                        }
+                    }),
+                
 
                 Select::make('layanan')
                     ->label('Paket Layanan')
@@ -256,8 +266,11 @@ class LanggananResource extends Resource
                     ->color(fn (string $state): string => match ($state) {
                         'Aktif' => 'success',
                         'Suspend' => 'danger',
+                        'Tidak Ada Invoice' => 'warning',
+                        'Kadaluarsa' => 'warning',
                         default => 'gray',
                     }),
+                    
 
                 TextColumn::make('created_at')
                     ->label('Dibuat')

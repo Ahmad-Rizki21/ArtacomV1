@@ -62,11 +62,12 @@ class AdminPanelProvider extends PanelProvider
                 Pages\Dashboard::class,
             ])
             ->widgets([
-                \App\Filament\Widgets\StatsDashboard::class,
-                \App\Filament\Widgets\UserStatusStatsWidget::class,
-                \App\Filament\Widgets\LaporanInvoiceChart::class,
-                \App\Filament\Widgets\LaporanPelangganChart::class,
-                \App\Filament\Widgets\UserStatusChart::class
+                // \App\Filament\Widgets\LaporanPelangganStats::class,  // Widget stats yang sudah dibuat
+                // \App\Filament\Widgets\JumlahPelangganPerAlamatChart::class,  // Widget chart yang sudah dibuat
+                // \App\Filament\Widgets\JumlahPelangganJakinetChart::class,  // Widget
+                // \App\Filament\Widgets\JumlahPelangganJelantikChart::class,  // Widget
+
+                
             ])
             ->middleware([
                 EncryptCookies::class,
@@ -85,7 +86,10 @@ class AdminPanelProvider extends PanelProvider
             
             ->plugins([
                 \BezhanSalleh\FilamentShield\FilamentShieldPlugin::make(),
+                
             ])
             ->databaseNotifications();
     }
+
+    
 }

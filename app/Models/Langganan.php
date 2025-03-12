@@ -21,7 +21,8 @@ class Langganan extends Model
         'total_harga_layanan_x_pajak',
         'tgl_jatuh_tempo',
         'tgl_invoice_terakhir',
-        'metode_pembayaran'
+        'metode_pembayaran',
+        'user_status'  // Menambahkan kolom user_status
     ];
 
     // Relasi ke pelanggan
@@ -177,10 +178,11 @@ public function hitungTotalHarga($isManual = false, $manualHarga = null)
             return 'Tidak Ada Invoice';
         }
 
-        if (in_array($latestInvoice->status_invoice, ['Selesai', 'Lunas'])) {
+        if (in_array($latestInvoice->status_invoice, ['Selesai', 'Lunas', 'Kadaluarsa'])) {
             return 'Aktif';
         } else {
             return 'Suspend';
-        }
+        }  
     }
+    
 }

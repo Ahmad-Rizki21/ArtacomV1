@@ -8,6 +8,7 @@
     "require": {
         "php": "^8.2",
         "bezhansalleh/filament-shield": "3.2.6",
+        "cmsmaxinc/filament-error-pages": "^1.0",
         "dragonmantank/cron-expression": "^3.4",
         "filament/filament": "^3.2",
         "filament/notifications": "^3.2",

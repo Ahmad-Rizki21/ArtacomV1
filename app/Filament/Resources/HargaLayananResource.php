@@ -83,6 +83,10 @@ class HargaLayananResource extends Resource
                     ->sortable()
                     ->searchable(),
 
+                TextColumn::make('pajak')
+                    ->label('Pajak (%)')
+                    ->sortable(),
+
                 TextColumn::make('harga_10mbps')
                     ->label('Harga 10 Mbps')
                     ->money('IDR') // Format sebagai mata uang IDR (Rupiah)

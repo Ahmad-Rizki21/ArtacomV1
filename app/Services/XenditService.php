@@ -11,8 +11,8 @@ use Exception;
 class XenditService
 {
     private const BRAND_MAPPING = [
-        'ajn-02' => 'Jakinet',
-        'ajn-01' => 'Jelantik',
+        'ajn-02' => 'Jelantik',
+        'ajn-01' => 'Jakinet',
         'ajn-03' => 'Jelantik (Nagrak)'
     ];
 
@@ -91,6 +91,7 @@ class XenditService
             // Logging untuk debugging
             Log::info('XenditService::createInvoice called', [
                 'invoice_number' => $invoice->invoice_number,
+                'brand' => $invoice->brand,
                 'trace_id' => $traceId ?? uniqid('direct_call_', true)
             ]);
             
@@ -105,11 +106,17 @@ class XenditService
                 ];
             }
 
-            // Dapatkan nama brand
+            // Dapatkan nama brand dengan debug logging
             $brandName = $this->getBrandName($invoice->brand);
             
+            // Debug logging untuk brand
+            Log::info('Brand Name Lookup', [
+                'input_brand_id' => $invoice->brand,
+                'derived_brand_name' => $brandName
+            ]);
+
             // Pilih API key berdasarkan brand
-            $apiKey = $this->getApiKeyByBrand($brandName);
+            $apiKey = $this->getApiKeyByBrand($invoice->brand, $brandName);
 
             // Validasi data invoice
             $this->validateInvoiceData($invoice);
@@ -124,6 +131,7 @@ class XenditService
             Log::info('Sending request to Xendit with idempotency key', [
                 'invoice_number' => $invoice->invoice_number,
                 'idempotency_key' => $idempotencyKey,
+                'api_key_used' => substr($apiKey, 0, 10) . '...',
                 'trace_id' => $traceId
             ]);
             
@@ -167,40 +175,114 @@ class XenditService
      * @return string
      */
     private function getBrandName(string $brandId): string
-    {
-        $brand = HargaLayanan::where('id_brand', $brandId)->value('brand');
-        return self::BRAND_MAPPING[strtolower($brandId)] ?? $brand ?? $brandId;
+{
+    // Logging untuk debugging
+    Log::info('getBrandName Debug', [
+        'brand_id' => $brandId,
+        'brand_mapping' => self::BRAND_MAPPING
+    ]);
+
+    // Coba ambil dari database terlebih dahulu
+    $brand = HargaLayanan::where('id_brand', $brandId)->value('brand');
+    
+    Log::info('Database Brand Check', [
+        'database_brand' => $brand
+    ]);
+
+    // Prioritaskan brand dari database
+    if ($brand) {
+        return $brand;
     }
+
+    // Jika tidak ada di database, gunakan mapping
+    $finalBrand = self::BRAND_MAPPING[strtolower($brandId)] ?? $brandId;
+
+    Log::info('Final Brand Name', [
+        'final_brand' => $finalBrand
+    ]);
+
+    return $finalBrand;
+}
 
     /**
      * Dapatkan API key berdasarkan brand
      *
+     * @param string $brandId
      * @param string $brandName
      * @return string
-     * @throws Exception
      */
-    private function getApiKeyByBrand(string $brandName): string
-    {
-        $brandName = strtolower($brandName);
+//     private function getApiKeyByBrand(string $brandId, string $brandName): string
+// {
+//     $brandId = strtolower($brandId);
+//     $brandName = strtolower($brandName);
 
-        // Khusus untuk Nagrak atau Jelantik Nagrak
-        if (strpos($brandName, 'nagrak') !== false) {
-            return env('XENDIT_API_KEY_JAKINET');  // Menggunakan API key Jakinet untuk Jelantik (Nagrak)
-        }
-    
-        // Untuk Jelantik
-        if (strpos($brandName, 'jelantik') !== false) {
-            return env('XENDIT_API_KEY_JELANTIK');
-        }
-    
-        // Untuk Jakinet
-        if (strpos($brandName, 'jakinet') !== false) {
-            return env('XENDIT_API_KEY_JAKINET');
-        }
-    
-        // Fallback ke Jakinet jika tidak dikenali
+//     Log::info('API Key Selection Debug', [
+//         'brand_id' => $brandId,
+//         'brand_name' => $brandName,
+//         'brand_mapping' => self::BRAND_MAPPING
+//     ]);
+
+//     // Debug print actual checking conditions
+//     Log::info('Brand Checking Conditions', [
+//         'is_ajn_03' => $brandId === 'ajn-03',
+//         'is_ajn_01' => $brandId === 'ajn-01',
+//         'is_ajn_02' => $brandId === 'ajn-02',
+//         'contains_nagrak' => strpos($brandName, 'nagrak') !== false,
+//         'contains_jelantik' => strpos($brandName, 'jelantik') !== false,
+//         'contains_jakinet' => strpos($brandName, 'jakinet') !== false
+//     ]);
+
+//     // Khusus untuk Jelantik Nagrak, gunakan API key Jakinet
+//     if ($brandId === 'ajn-03') {
+//         Log::info('Returning API Key for Nagrak', ['api_key' => 'XENDIT_API_KEY_JAKINET']);
+//         return env('XENDIT_API_KEY_JAKINET');  
+//     }
+
+//     // Untuk Jelantik (bukan Nagrak)
+//     if ($brandId === 'ajn-01' && strpos($brandName, 'nagrak') === false) {
+//         Log::info('Returning API Key for Jelantik', ['api_key' => 'XENDIT_API_KEY_JELANTIK']);
+//         return env('XENDIT_API_KEY_JELANTIK');
+//     }
+
+//     // Untuk Jakinet
+//     if ($brandId === 'ajn-02') {
+//         Log::info('Returning API Key for Jakinet', ['api_key' => 'XENDIT_API_KEY_JAKINET']);
+//         return env('XENDIT_API_KEY_JAKINET');
+//     }
+
+//     // Fallback ke Jakinet jika tidak dikenali
+//     Log::warning('Fallback to Jakinet API Key', [
+//         'brand_id' => $brandId, 
+//         'brand_name' => $brandName
+//     ]);
+//     return env('XENDIT_API_KEY_JAKINET');
+// }
+
+
+
+private function getApiKeyByBrand(string $brandId, string $brandName): string
+{
+    $brandId = strtolower($brandId);
+    $brandName = strtolower($brandName);
+
+    // Jakinet (ajn-01) menggunakan API Jakinet
+    if ($brandId === 'ajn-01') {
         return env('XENDIT_API_KEY_JAKINET');
     }
+
+    // Jelantik (ajn-02) menggunakan API Jelantik
+    if ($brandId === 'ajn-02') {
+        return env('XENDIT_API_KEY_JELANTIK');
+    }
+
+    // Jelantik Nagrak (ajn-03) menggunakan API Jakinet
+    if ($brandId === 'ajn-03') {
+        return env('XENDIT_API_KEY_JAKINET');
+    }
+
+    // Fallback
+    return env('XENDIT_API_KEY_JAKINET');
+}
 
     /**
      * Validasi data invoice sebelum dikirim
@@ -299,7 +381,8 @@ class XenditService
     public function checkInvoiceStatus(string $xenditId, string $brand)
     {
         try {
-            $apiKey = $this->getApiKeyByBrand($brand);
+            $brandName = $this->getBrandName($brand);
+            $apiKey = $this->getApiKeyByBrand($brand, $brandName);
             $url = "https://api.xendit.co/v2/invoices/{$xenditId}";
 
             $response = Http::withBasicAuth($apiKey, '')
