@@ -7,6 +7,7 @@ use Illuminate\Support\Facades\Log;
 use App\Models\Invoice;
 use App\Models\HargaLayanan;
 use Exception;
+use Carbon\Carbon;
 
 class XenditService
 {
@@ -46,6 +47,15 @@ class XenditService
                 throw new Exception('Invoice tidak ditemukan');
             }
 
+            // Pastikan tanggal invoice tersedia
+            if (empty($invoice->tgl_invoice)) {
+                Log::warning('tgl_invoice kosong pada webhook, menggunakan tanggal saat ini', [
+                    'invoice_number' => $invoice->invoice_number
+                ]);
+                $invoice->tgl_invoice = now()->format('Y-m-d');
+                $invoice->save();
+            }
+
             // Update status invoice berdasarkan status yang diterima dari Xendit
             $newStatus = self::STATUS_MAP[$data['status']] ?? 'Tidak Diketahui';
             $invoice->status_invoice = $newStatus;
@@ -57,8 +67,42 @@ class XenditService
             // Log hasil pembaruan status invoice
             Log::info('Invoice status updated from webhook', [
                 'invoice_number' => $invoice->invoice_number,
-                'new_status' => $newStatus
+                'new_status' => $newStatus,
+                'tgl_invoice' => $invoice->tgl_invoice
             ]);
+
+            // Jika invoice lunas, update tanggal jatuh tempo dan status langganan
+            if (in_array($newStatus, ['Lunas', 'Selesai'])) {
+                $langganan = $invoice->langganan;
+                
+                if ($langganan) {
+                    // Format tanggal invoice
+                    $tglInvoice = $invoice->tgl_invoice 
+                        ? Carbon::parse($invoice->tgl_invoice)->format('Y-m-d')
+                        : now()->format('Y-m-d');
+                        
+                    Log::info('Memperbarui langganan dari webhook Xendit', [
+                        'invoice_number' => $invoice->invoice_number,
+                        'tanggal_invoice' => $tglInvoice
+                    ]);
+                    
+                    // Update tanggal jatuh tempo dan tgl_invoice_terakhir pada langganan
+                    $langganan->updateTanggalJatuhTempo($tglInvoice);
+                    
+                    Log::info('Langganan berhasil diperbarui dari webhook', [
+                        'invoice_number' => $invoice->invoice_number,
+                        'pelanggan_id' => $invoice->pelanggan_id,
+                        'status_langganan' => $langganan->user_status,
+                        'tgl_jatuh_tempo' => $langganan->tgl_jatuh_tempo,
+                        'tgl_invoice_terakhir' => $langganan->tgl_invoice_terakhir
+                    ]);
+                } else {
+                    Log::warning('Langganan tidak ditemukan untuk invoice ini', [
+                        'invoice_number' => $invoice->invoice_number,
+                        'pelanggan_id' => $invoice->pelanggan_id
+                    ]);
+                }
+            }
 
             return [
                 'status' => 'success',
@@ -94,6 +138,15 @@ class XenditService
                 'brand' => $invoice->brand,
                 'trace_id' => $traceId ?? uniqid('direct_call_', true)
             ]);
+            
+            // Pastikan tanggal invoice tersedia
+            if (empty($invoice->tgl_invoice)) {
+                Log::warning('tgl_invoice kosong saat membuat invoice, menggunakan tanggal saat ini', [
+                    'invoice_number' => $invoice->invoice_number
+                ]);
+                $invoice->tgl_invoice = now()->format('Y-m-d');
+                $invoice->save();
+            }
             
             // Periksa apakah invoice sudah diproses
             if (!empty($invoice->payment_link) || !empty($invoice->xendit_id)) {
@@ -175,34 +228,34 @@ class XenditService
      * @return string
      */
     private function getBrandName(string $brandId): string
-{
-    // Logging untuk debugging
-    Log::info('getBrandName Debug', [
-        'brand_id' => $brandId,
-        'brand_mapping' => self::BRAND_MAPPING
-    ]);
+    {
+        // Logging untuk debugging
+        Log::info('getBrandName Debug', [
+            'brand_id' => $brandId,
+            'brand_mapping' => self::BRAND_MAPPING
+        ]);
 
-    // Coba ambil dari database terlebih dahulu
-    $brand = HargaLayanan::where('id_brand', $brandId)->value('brand');
-    
-    Log::info('Database Brand Check', [
-        'database_brand' => $brand
-    ]);
+        // Coba ambil dari database terlebih dahulu
+        $brand = HargaLayanan::where('id_brand', $brandId)->value('brand');
+        
+        Log::info('Database Brand Check', [
+            'database_brand' => $brand
+        ]);
 
-    // Prioritaskan brand dari database
-    if ($brand) {
-        return $brand;
+        // Prioritaskan brand dari database
+        if ($brand) {
+            return $brand;
+        }
+
+        // Jika tidak ada di database, gunakan mapping
+        $finalBrand = self::BRAND_MAPPING[strtolower($brandId)] ?? $brandId;
+
+        Log::info('Final Brand Name', [
+            'final_brand' => $finalBrand
+        ]);
+
+        return $finalBrand;
     }
-
-    // Jika tidak ada di database, gunakan mapping
-    $finalBrand = self::BRAND_MAPPING[strtolower($brandId)] ?? $brandId;
-
-    Log::info('Final Brand Name', [
-        'final_brand' => $finalBrand
-    ]);
-
-    return $finalBrand;
-}
 
     /**
      * Dapatkan API key berdasarkan brand
@@ -211,78 +264,29 @@ class XenditService
      * @param string $brandName
      * @return string
      */
-//     private function getApiKeyByBrand(string $brandId, string $brandName): string
-// {
-//     $brandId = strtolower($brandId);
-//     $brandName = strtolower($brandName);
+    private function getApiKeyByBrand(string $brandId, string $brandName): string
+    {
+        $brandId = strtolower($brandId);
+        $brandName = strtolower($brandName);
 
-//     Log::info('API Key Selection Debug', [
-//         'brand_id' => $brandId,
-//         'brand_name' => $brandName,
-//         'brand_mapping' => self::BRAND_MAPPING
-//     ]);
+        // Jakinet (ajn-01) menggunakan API Jakinet
+        if ($brandId === 'ajn-01') {
+            return env('XENDIT_API_KEY_JAKINET');
+        }
 
-//     // Debug print actual checking conditions
-//     Log::info('Brand Checking Conditions', [
-//         'is_ajn_03' => $brandId === 'ajn-03',
-//         'is_ajn_01' => $brandId === 'ajn-01',
-//         'is_ajn_02' => $brandId === 'ajn-02',
-//         'contains_nagrak' => strpos($brandName, 'nagrak') !== false,
-//         'contains_jelantik' => strpos($brandName, 'jelantik') !== false,
-//         'contains_jakinet' => strpos($brandName, 'jakinet') !== false
-//     ]);
+        // Jelantik (ajn-02) menggunakan API Jelantik
+        if ($brandId === 'ajn-02') {
+            return env('XENDIT_API_KEY_JELANTIK');
+        }
 
-//     // Khusus untuk Jelantik Nagrak, gunakan API key Jakinet
-//     if ($brandId === 'ajn-03') {
-//         Log::info('Returning API Key for Nagrak', ['api_key' => 'XENDIT_API_KEY_JAKINET']);
-//         return env('XENDIT_API_KEY_JAKINET');  
-//     }
+        // Jelantik Nagrak (ajn-03) menggunakan API Jakinet
+        if ($brandId === 'ajn-03') {
+            return env('XENDIT_API_KEY_JAKINET');
+        }
 
-//     // Untuk Jelantik (bukan Nagrak)
-//     if ($brandId === 'ajn-01' && strpos($brandName, 'nagrak') === false) {
-//         Log::info('Returning API Key for Jelantik', ['api_key' => 'XENDIT_API_KEY_JELANTIK']);
-//         return env('XENDIT_API_KEY_JELANTIK');
-//     }
-
-//     // Untuk Jakinet
-//     if ($brandId === 'ajn-02') {
-//         Log::info('Returning API Key for Jakinet', ['api_key' => 'XENDIT_API_KEY_JAKINET']);
-//         return env('XENDIT_API_KEY_JAKINET');
-//     }
-
-//     // Fallback ke Jakinet jika tidak dikenali
-//     Log::warning('Fallback to Jakinet API Key', [
-//         'brand_id' => $brandId, 
-//         'brand_name' => $brandName
-//     ]);
-//     return env('XENDIT_API_KEY_JAKINET');
-// }
-
-
-
-private function getApiKeyByBrand(string $brandId, string $brandName): string
-{
-    $brandId = strtolower($brandId);
-    $brandName = strtolower($brandName);
-
-    // Jakinet (ajn-01) menggunakan API Jakinet
-    if ($brandId === 'ajn-01') {
+        // Fallback
         return env('XENDIT_API_KEY_JAKINET');
     }
-
-    // Jelantik (ajn-02) menggunakan API Jelantik
-    if ($brandId === 'ajn-02') {
-        return env('XENDIT_API_KEY_JELANTIK');
-    }
-
-    // Jelantik Nagrak (ajn-03) menggunakan API Jakinet
-    if ($brandId === 'ajn-03') {
-        return env('XENDIT_API_KEY_JAKINET');
-    }
-
-    // Fallback
-    return env('XENDIT_API_KEY_JAKINET');
-}
 
     /**
      * Validasi data invoice sebelum dikirim
@@ -363,6 +367,12 @@ private function getApiKeyByBrand(string $brandId, string $brandName): string
             throw new Exception('Invoice URL tidak ditemukan di respons Xendit');
         }
 
+        // Update invoice dengan data dari Xendit
+        $invoice->payment_link = $responseData['invoice_url'];
+        $invoice->xendit_id = $responseData['id'];
+        $invoice->xendit_external_id = $responseData['external_id'];
+        $invoice->save();
+
         return [
             'status' => 'success',
             'invoice_url' => $responseData['invoice_url'],
@@ -399,6 +409,39 @@ private function getApiKeyByBrand(string $brandId, string $brandName): string
             }
 
             $responseData = $response->json();
+            
+            // Jika status invoice adalah PAID atau SETTLED, update langganan
+            if (isset($responseData['status']) && in_array($responseData['status'], ['PAID', 'SETTLED'])) {
+                // Cari invoice berdasarkan xendit_id
+                $invoice = Invoice::where('xendit_id', $xenditId)->first();
+                
+                if ($invoice) {
+                    // Update status invoice
+                    $newStatus = self::STATUS_MAP[$responseData['status']] ?? 'Tidak Diketahui';
+                    $invoice->status_invoice = $newStatus;
+                    $invoice->paid_amount = $responseData['paid_amount'] ?? null;
+                    $invoice->paid_at = $responseData['paid_at'] ?? null;
+                    $invoice->save();
+                    
+                    // Update langganan jika invoice sudah dibayar
+                    $langganan = $invoice->langganan;
+                    
+                    if ($langganan) {
+                        $tglInvoice = $invoice->tgl_invoice 
+                            ? Carbon::parse($invoice->tgl_invoice)->format('Y-m-d')
+                            : now()->format('Y-m-d');
+                            
+                        Log::info('Memperbarui langganan dari status check', [
+                            'invoice_number' => $invoice->invoice_number,
+                            'xendit_id' => $xenditId,
+                            'tanggal_invoice' => $tglInvoice
+                        ]);
+                        
+                        $langganan->updateTanggalJatuhTempo($tglInvoice);
+                    }
+                }
+            }
+            
             return $responseData;
 
         } catch (Exception $e) {

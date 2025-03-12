@@ -86,7 +86,7 @@ class AdminPanelProvider extends PanelProvider
             
             ->plugins([
                 \BezhanSalleh\FilamentShield\FilamentShieldPlugin::make(),
-                
+                \Cmsmaxinc\FilamentErrorPages\FilamentErrorPagesPlugin::make(),
             ])
             ->databaseNotifications();
     }

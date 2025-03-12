@@ -260,6 +260,11 @@ class LanggananResource extends Resource
                     ->date('d M Y')
                     ->sortable(),
 
+                TextColumn::make('tgl_invoice_terakhir')
+                    ->label('Invoice Terakhir')
+                    ->date('d M Y')
+                    ->sortable(),
+
                 TextColumn::make('user_status')
                     ->label('Status User')
                     ->badge()
@@ -270,7 +275,23 @@ class LanggananResource extends Resource
                         'Kadaluarsa' => 'warning',
                         default => 'gray',
                     }),
-                    
+
+
+                TextColumn::make('id_pelanggan')
+                    ->label('ID Pelanggan')
+                    ->sortable()
+                    ->disabled(),
+
+                TextColumn::make('profile_pppoe')
+                    ->label('Profile PPPoE')
+                    ->sortable()
+                    ->disabled(),
+
+                TextColumn::make('olt')
+                    ->label('OLT')
+                    ->sortable()
+                    ->disabled(),
+
 
                 TextColumn::make('created_at')
                     ->label('Dibuat')

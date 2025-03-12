@@ -34,7 +34,7 @@ class Invoice extends Model
         'paid_at'
     ];
 
-    protected $dates = ['deleted_at']; // ⬅️ Tambahkan ini jika belum ada
+    protected $dates = ['deleted_at', 'tgl_invoice', 'tgl_jatuh_tempo', 'paid_at'];
 
     protected $casts = [
         'total_harga' => 'decimal:2',
@@ -53,7 +53,6 @@ class Invoice extends Model
         'Tidak Diketahui'
     ];
 
-
     public static function rules() {
         return [
             'invoice_number' => 'required|string',
@@ -68,307 +67,240 @@ class Invoice extends Model
             'status_invoice' => 'required|string'
         ];
     }
-    
-
 
     /**
      * Update status invoice dari Xendit
+     * Method ini juga akan mengupdate status langganan dan tanggal jatuh tempo
      */
-
-
-     public function updateXenditStatus(string $xenditStatus, ?string $xenditId = null, ?array $additionalData = null)
-{
-    $statusMapping = [
-        'PENDING' => 'Menunggu Pembayaran',
-        'PAID' => 'Lunas',
-        'SETTLED' => 'Selesai',
-        'EXPIRED' => 'Kadaluarsa'
-    ];
-
-    // Mapping status dari Xendit ke status internal
-    $newStatus = $statusMapping[strtoupper($xenditStatus)] ?? 'Tidak Diketahui';
-
-    $updateData = [
-        'status_invoice' => $newStatus
-    ];
-
-    // Jika ada Xendit ID dan data pembayaran tambahan
-    if ($xenditId) {
-        $updateData['xendit_id'] = $xenditId;
-    }
-
-    if ($additionalData) {
-        if (isset($additionalData['paid_amount'])) {
-            $updateData['paid_amount'] = number_format($additionalData['paid_amount'], 2, '.', '');
-        }
-
-        if (isset($additionalData['paid_at'])) {
-            $updateData['paid_at'] = Carbon::parse($additionalData['paid_at']);
-        }
-    }
-
-    // Update status invoice
-    $this->fill($updateData);
-    $this->save();
-
-    Log::info('Invoice status updated in database', [
-        'invoice_number' => $this->invoice_number,
-        'status' => $this->status_invoice
-    ]);
-
-    return $this;
-}
-
-public function updateStatusFromWebhook(string $status, float $paidAmount = 0, ?string $paidAt = null)
-{
-    // Pemetaan status dari Xendit ke status internal
-    $statusMapping = [
-        'PENDING' => 'Menunggu Pembayaran',
-        'SETTLED' => 'Selesai',
-        'EXPIRED' => 'Kadaluarsa',
-        'PAID' => 'Lunas',
-    ];
-
-    // Tentukan status baru berdasarkan pemetaan
-    $newStatus = $statusMapping[strtoupper($status)] ?? 'Tidak Diketahui';
-
-    // Perbarui status invoice
-    $this->status_invoice = $newStatus;
-
-    // Perbarui jumlah yang dibayar jika ada
-    if ($paidAmount > 0) {
-        $this->paid_amount = $paidAmount;
-    }
-
-    // Perbarui waktu pembayaran jika ada
-    if ($paidAt) {
-        $this->paid_at = Carbon::parse($paidAt);
-    }
-
-    // Simpan pembaruan status
-    $this->save();
-
-    // Log untuk memverifikasi perubahan
-    Log::info('Invoice status updated from webhook', [
-        'invoice_number' => $this->invoice_number,
-        'new_status' => $this->status_invoice
-    ]);
-}
-
-
-
-
-//     public function updateXenditStatus(string $status, ?string $xenditId = null): self
-// {
-//     // Pemetaan status dari Xendit
-//     $statusMapping = [
-//         'PENDING' => 'Menunggu Pembayaran',
-//         'PAID' => 'Lunas',
-//         'SETTLED' => 'Selesai',
-//         'EXPIRED' => 'Kadaluarsa',
-//     ];
-
-//     // Konversi status dengan aman
-//     $newStatus = $statusMapping[strtoupper($status)] ?? 'Tidak Diketahui';
-
-//     // Log detail update
-//     Log::info('Updating Invoice Status', [
-//         'invoice_number' => $this->invoice_number,
-//         'current_status' => $this->status_invoice,
-//         'new_status' => $newStatus,
-//         'xendit_status' => $status
-//     ]);
-
-//     // Update status dan Xendit ID
-//     $this->status_invoice = $newStatus;
-//     if ($xenditId) {
-//         $this->xendit_id = $xenditId;
-//     }
-
-//     // Simpan perubahan
-//     $this->save();
-
-//     return $this;
-// }
-
-
-//     /**
-//      * Update dari callback webhook Xendit
-//      */
-//     public function updateFromXenditCallback(
-//         string $xenditStatus, 
-//         ?string $xenditId = null, 
-//         ?string $externalId = null,
-//         ?float $paidAmount = null,
-//         ?string $paidAt = null
-//     ): self {
-//         // Pemetaan status
-//         $statusMapping = [
-//             'PENDING' => 'Menunggu Pembayaran',
-//             'PAID' => 'Lunas',
-//             'SETTLED' => 'Selesai',
-//             'EXPIRED' => 'Kadaluarsa'
-//         ];
-
-//         // Konversi status
-//         $newStatus = $statusMapping[strtoupper($xenditStatus)] ?? 'Tidak Diketahui';
-
-//         // Siapkan data update
-//         $updateData = [
-//             'status_invoice' => $newStatus
-//         ];
-
-//         // Tambahkan Xendit ID jika disediakan
-//         if ($xenditId) {
-//             $updateData['xendit_id'] = $xenditId;
-//         }
-
-//         // Tambahkan External ID jika disediakan
-//         if ($externalId) {
-//             $updateData['xendit_external_id'] = $externalId;
-//         }
-
-//         // Tambahkan informasi pembayaran
-//         if ($paidAmount !== null) {
-//             $updateData['paid_amount'] = $paidAmount;
-//         }
-
-//         if ($paidAt) {
-//             $updateData['paid_at'] = $paidAt;
-//         }
-
-//         // Update invoice
-//         $this->update($updateData);
-
-//         // Logging
-//         Log::info('Invoice Updated from Xendit Callback', [
-//             'invoice_number' => $this->invoice_number,
-//             'old_status' => $this->getOriginal('status_invoice'),
-//             'new_status' => $newStatus,
-//             'xendit_status' => $xenditStatus
-//         ]);
-
-//         return $this;
-//     }
-
-
-
-
-        // public function updateXenditStatus(string $xenditStatus, ?string $xenditId = null, ?array $additionalData = null)
-        // {
-        //     Log::info('🔍 Memulai update status invoice', [
-        //         'invoice_number' => $this->invoice_number,
-        //         'status' => $xenditStatus,
-        //         'additional_data' => $additionalData
-        //     ]);
-
-        //     $statusMapping = [
-        //         'PENDING' => 'Menunggu Pembayaran',
-        //         'PAID' => 'Lunas',
-        //         'SETTLED' => 'Selesai',
-        //         'EXPIRED' => 'Kadaluarsa'
-        //     ];
-
-        //     $newStatus = $statusMapping[strtoupper($xenditStatus)] ?? 'Tidak Diketahui';
-
-        //     $updateData = ['status_invoice' => $newStatus];
-
-        //     if ($xenditId) {
-        //         $updateData['xendit_id'] = $xenditId;
-        //     }
-
-        //     if ($additionalData) {
-        //         if (isset($additionalData['paid_amount'])) {
-        //             $updateData['paid_amount'] = number_format($additionalData['paid_amount'], 2, '.', '');
-        //         }
-
-        //         if (isset($additionalData['paid_at'])) {
-        //             $updateData['paid_at'] = \Carbon\Carbon::parse($additionalData['paid_at']);
-        //         }
-        //     }
-
-            
-
-        //     $this->fill($updateData);
-        //     $this->save();
-
-        //     Log::info('✅ Status Invoice Berhasil Diperbarui', [
-        //         'invoice_number' => $this->invoice_number,
-        //         'new_status' => $newStatus,
-        //         'paid_amount' => $updateData['paid_amount'] ?? null,
-        //         'paid_at' => $updateData['paid_at'] ?? null
-        //     ]);
-
-        //     return $this;
-        // }
-
-        
-        
-        
-
-public function updateStatusFromXendit()
-{
-    // Pastikan xendit_id tersedia
-    if (!$this->xendit_id) {
-        Log::warning('Tidak dapat memeriksa status - Xendit ID kosong', [
-            'invoice_number' => $this->invoice_number
-        ]);
-        return false;
-    }
-
-    // Dapatkan nama brand dari model HargaLayanan
-    $brand = HargaLayanan::where('id_brand', $this->brand)->value('brand');
-
-    // Gunakan service untuk memeriksa status
-    $xenditService = new XenditService();
-    $invoiceStatus = $xenditService->checkInvoiceStatus($this->xendit_id, $brand);
-
-    if (!$invoiceStatus) {
-        Log::error('Gagal mendapatkan status invoice', [
+    public function updateXenditStatus(string $xenditStatus, ?string $xenditId = null, ?array $additionalData = null)
+    {
+        Log::info('Memulai update status invoice dari Xendit', [
             'invoice_number' => $this->invoice_number,
-            'xendit_id' => $this->xendit_id
+            'xendit_status' => $xenditStatus,
+            'xendit_id' => $xenditId
         ]);
-        return false;
+
+        $statusMapping = [
+            'PENDING' => 'Menunggu Pembayaran',
+            'PAID' => 'Lunas',
+            'SETTLED' => 'Selesai',
+            'EXPIRED' => 'Kadaluarsa'
+        ];
+
+        $newStatus = $statusMapping[strtoupper($xenditStatus)] ?? 'Tidak Diketahui';
+
+        $updateData = [
+            'status_invoice' => $newStatus
+        ];
+
+        if ($xenditId) {
+            $updateData['xendit_id'] = $xenditId;
+        }
+
+        if ($additionalData) {
+            if (isset($additionalData['paid_amount'])) {
+                $updateData['paid_amount'] = number_format($additionalData['paid_amount'], 2, '.', '');
+            }
+
+            if (isset($additionalData['paid_at'])) {
+                $updateData['paid_at'] = Carbon::parse($additionalData['paid_at']);
+            }
+        }
+
+        // Update status invoice
+        $this->fill($updateData);
+        $this->save();
+
+        Log::info('Status invoice diperbarui', [
+            'invoice_number' => $this->invoice_number,
+            'new_status' => $newStatus
+        ]);
+
+        // Jika status invoice adalah 'Lunas' atau 'Selesai'
+        if (in_array($newStatus, ['Lunas', 'Selesai'])) {
+            // Ambil langganan terkait
+            $langganan = $this->langganan;
+            
+            if ($langganan) {
+                // Update tanggal jatuh tempo dan status langganan
+                // Format tanggal invoice ke format yang benar sebelum mengirimkannya
+                $tglInvoice = $this->tgl_invoice ? Carbon::parse($this->tgl_invoice)->format('Y-m-d') : null;
+                
+                Log::info('Mengirim data invoice untuk update langganan', [
+                    'invoice_number' => $this->invoice_number,
+                    'tanggal_invoice' => $tglInvoice
+                ]);
+                
+                $updated = $langganan->updateTanggalJatuhTempo($tglInvoice);
+                
+                Log::info('Hasil update langganan setelah pembayaran', [
+                    'invoice_number' => $this->invoice_number,
+                    'pelanggan_id' => $this->pelanggan_id,
+                    'tanggal_invoice' => $this->tgl_invoice,
+                    'updated' => $updated
+                ]);
+            } else {
+                Log::warning('Langganan tidak ditemukan untuk invoice ini', [
+                    'invoice_number' => $this->invoice_number,
+                    'pelanggan_id' => $this->pelanggan_id
+                ]);
+            }
+        }
+
+        return $this;
     }
 
-    // Mapping status
-    $statusMapping = [
-        'PENDING' => 'Menunggu Pembayaran',
-        'PAID' => 'Lunas',
-        'SETTLED' => 'Selesai',
-        'EXPIRED' => 'Kadaluarsa'
-    ];
+    /**
+     * Update status dari webhook
+     */
+    public function updateStatusFromWebhook(string $status, float $paidAmount = 0, ?string $paidAt = null)
+    {
+        Log::info('Menerima update status dari webhook', [
+            'invoice_number' => $this->invoice_number,
+            'status' => $status,
+            'paid_amount' => $paidAmount,
+            'paid_at' => $paidAt
+        ]);
 
-    // Update status
-    $newStatus = $statusMapping[$invoiceStatus['status']] ?? 'Tidak Diketahui';
+        // Pemetaan status dari Xendit ke status internal
+        $statusMapping = [
+            'PENDING' => 'Menunggu Pembayaran',
+            'SETTLED' => 'Selesai',
+            'EXPIRED' => 'Kadaluarsa',
+            'PAID' => 'Lunas',
+        ];
 
-    // Siapkan data update
-    $updateData = [
-        'status_invoice' => $newStatus
-    ];
+        $newStatus = $statusMapping[strtoupper($status)] ?? 'Tidak Diketahui';
 
-    // Tambahkan informasi pembayaran dengan pengecekan
-    if (isset($invoiceStatus['amount'])) {
-        $updateData['paid_amount'] = $invoiceStatus['amount'];
+        // Perbarui status invoice
+        $this->status_invoice = $newStatus;
+
+        // Perbarui jumlah yang dibayar jika ada
+        if ($paidAmount > 0) {
+            $this->paid_amount = $paidAmount;
+        }
+
+        // Perbarui waktu pembayaran jika ada
+        if ($paidAt) {
+            $this->paid_at = Carbon::parse($paidAt);
+        }
+
+        // Simpan pembaruan status
+        $this->save();
+
+        Log::info('Status invoice diperbarui dari webhook', [
+            'invoice_number' => $this->invoice_number,
+            'new_status' => $this->status_invoice
+        ]);
+
+        // Jika status invoice adalah 'Lunas' atau 'Selesai'
+        if (in_array($newStatus, ['Lunas', 'Selesai'])) {
+            // Ambil langganan terkait
+            $langganan = $this->langganan;
+            
+            if ($langganan) {
+                // Format tanggal invoice ke format yang benar sebelum mengirimkannya
+                $tglInvoice = $this->tgl_invoice ? Carbon::parse($this->tgl_invoice)->format('Y-m-d') : null;
+                
+                Log::info('Memperbarui langganan dari webhook', [
+                    'invoice_number' => $this->invoice_number,
+                    'tanggal_invoice' => $tglInvoice
+                ]);
+                
+                // Update tanggal jatuh tempo dan status langganan
+                $langganan->updateTanggalJatuhTempo($tglInvoice);
+                
+                Log::info('Langganan diperbarui setelah pembayaran webhook', [
+                    'invoice_number' => $this->invoice_number,
+                    'pelanggan_id' => $this->pelanggan_id,
+                    'tgl_jatuh_tempo' => $langganan->tgl_jatuh_tempo,
+                    'status' => $langganan->user_status
+                ]);
+            } else {
+                Log::warning('Langganan tidak ditemukan untuk invoice ini', [
+                    'invoice_number' => $this->invoice_number,
+                    'pelanggan_id' => $this->pelanggan_id
+                ]);
+            }
+        }
+
+        return true;
     }
 
-    if (isset($invoiceStatus['paid_at'])) {
-        $updateData['paid_at'] = $invoiceStatus['paid_at'];
+    /**
+     * Update status invoice dari Xendit API
+     */
+    public function updateStatusFromXendit()
+    {
+        // Pastikan xendit_id tersedia
+        if (!$this->xendit_id) {
+            Log::warning('Tidak dapat memeriksa status - Xendit ID kosong', [
+                'invoice_number' => $this->invoice_number
+            ]);
+            return false;
+        }
+
+        // Dapatkan nama brand dari model HargaLayanan
+        $brand = HargaLayanan::where('id_brand', $this->brand)->value('brand');
+
+        // Gunakan service untuk memeriksa status
+        $xenditService = new XenditService();
+        $invoiceStatus = $xenditService->checkInvoiceStatus($this->xendit_id, $brand);
+
+        if (!$invoiceStatus) {
+            Log::error('Gagal mendapatkan status invoice dari Xendit API', [
+                'invoice_number' => $this->invoice_number,
+                'xendit_id' => $this->xendit_id
+            ]);
+            return false;
+        }
+
+        // Mapping status
+        $statusMapping = [
+            'PENDING' => 'Menunggu Pembayaran',
+            'PAID' => 'Lunas',
+            'SETTLED' => 'Selesai',
+            'EXPIRED' => 'Kadaluarsa'
+        ];
+
+        // Konversi status
+        $newStatus = $statusMapping[$invoiceStatus['status']] ?? 'Tidak Diketahui';
+
+        // Siapkan data update
+        $updateData = [
+            'status_invoice' => $newStatus
+        ];
+
+        // Tambahkan informasi pembayaran dengan pengecekan
+        if (isset($invoiceStatus['amount'])) {
+            $updateData['paid_amount'] = $invoiceStatus['amount'];
+        }
+
+        if (isset($invoiceStatus['paid_at'])) {
+            $updateData['paid_at'] = $invoiceStatus['paid_at'];
+        }
+
+        // Update invoice
+        $this->update($updateData);
+
+        Log::info('Status invoice diperbarui dari Xendit API', [
+            'invoice_number' => $this->invoice_number,
+            'old_status' => $this->getOriginal('status_invoice'),
+            'new_status' => $newStatus
+        ]);
+
+        // Jika status invoice adalah 'Lunas' atau 'Selesai'
+        if (in_array($newStatus, ['Lunas', 'Selesai'])) {
+            // Update status dan tanggal jatuh tempo langganan
+            $langganan = $this->langganan;
+            
+            if ($langganan) {
+                $langganan->updateTanggalJatuhTempo($this->tgl_invoice);
+            }
+        }
+
+        return true;
     }
-
-    // Update invoice
-    $this->update($updateData);
-
-    Log::info('Invoice status updated from Xendit', [
-        'invoice_number' => $this->invoice_number,
-        'old_status' => $this->getOriginal('status_invoice'),
-        'new_status' => $newStatus
-    ]);
-
-    return true;
-}
-
-
 
     /**
      * Metode untuk mencari invoice berdasarkan Xendit ID
@@ -447,7 +379,7 @@ public function updateStatusFromXendit()
             // Set status awal
             $invoice->status_invoice = 'Menunggu Pembayaran';
 
-                // Tambahkan logika untuk menetapkan tanggal jatuh tempo
+            // Tambahkan logika untuk menetapkan tanggal jatuh tempo
             if (!$invoice->tgl_jatuh_tempo) {
                 // Jika tidak ada tanggal jatuh tempo, set 1 bulan dari tanggal invoice
                 $invoice->tgl_jatuh_tempo = Carbon::parse($invoice->tgl_invoice)->addMonth();
@@ -458,9 +390,33 @@ public function updateStatusFromXendit()
             Log::info('Invoice Created: ', $invoice->toArray());
             event(new InvoiceCreated($invoice));
         });
-
-
         
+        // Tambahkan listener untuk updated event
+        static::updated(function ($invoice) {
+            Log::info('Invoice Updated: ', [
+                'invoice_number' => $invoice->invoice_number,
+                'status' => $invoice->status_invoice
+            ]);
+            
+            // Jika status invoice berubah menjadi 'Lunas' atau 'Selesai'
+            if (in_array($invoice->status_invoice, ['Lunas', 'Selesai']) && 
+                !in_array($invoice->getOriginal('status_invoice'), ['Lunas', 'Selesai'])) {
+                
+                // Update status dan tanggal jatuh tempo langganan
+                $langganan = $invoice->langganan;
+                
+                if ($langganan) {
+                    $langganan->updateTanggalJatuhTempo();
+                    
+                    Log::info('Langganan diperbarui setelah invoice lunas', [
+                        'invoice_number' => $invoice->invoice_number,
+                        'pelanggan_id' => $invoice->pelanggan_id,
+                        'status_langganan' => $langganan->user_status,
+                        'tgl_jatuh_tempo' => $langganan->tgl_jatuh_tempo
+                    ]);
+                }
+            }
+        });
     }
 
     // Relasi ke Pelanggan
@@ -485,5 +441,35 @@ public function updateStatusFromXendit()
     public function hargaLayanan()
     {
         return $this->hasOne(HargaLayanan::class, 'id_brand', 'brand');
+    }
+    
+    /**
+     * Method untuk menangani pembayaran sukses
+     * Ini akan mengupdate status langganan dan tanggal jatuh tempo
+     */
+    public function handleSuccessfulPayment()
+    {
+        // Update status invoice menjadi Lunas jika belum
+        if ($this->status_invoice !== 'Lunas' && $this->status_invoice !== 'Selesai') {
+            $this->status_invoice = 'Lunas';
+            $this->save();
+        }
+        
+        // Update langganan
+        $langganan = $this->langganan;
+        
+        if ($langganan) {
+            // Format tanggal invoice ke format yang benar
+            $tglInvoice = $this->tgl_invoice ? Carbon::parse($this->tgl_invoice)->format('Y-m-d') : null;
+            
+            Log::info('Menangani pembayaran sukses', [
+                'invoice_number' => $this->invoice_number,
+                'tanggal_invoice' => $tglInvoice
+            ]);
+            
+            return $langganan->updateTanggalJatuhTempo($tglInvoice);
+        }
+        
+        return false;
     }
 }

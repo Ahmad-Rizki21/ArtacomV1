@@ -6,6 +6,7 @@ use App\Models\Invoice;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use App\Services\XenditService;
+use Carbon\Carbon;
 
 class PaymentController extends Controller
 {
@@ -105,12 +106,24 @@ class PaymentController extends Controller
             return response()->json(['status' => 'error', 'message' => 'Invoice not found'], 404);
         }
 
+        // Pastikan tanggal invoice tersedia
+        if (empty($invoice->tgl_invoice)) {
+            Log::warning('tgl_invoice kosong pada invoice ' . $externalId . ', menggunakan tanggal saat ini');
+            $invoice->tgl_invoice = now()->format('Y-m-d');
+            $invoice->save();
+        }
+
+        // Tampilkan informasi tentang invoice yang akan diupdate
+        Log::info('Update invoice dari webhook Xendit', [
+            'invoice_number' => $externalId,
+            'status' => $status, 
+            'tgl_invoice' => $invoice->tgl_invoice,
+            'paid_at' => $paidAt
+        ]);
+
         // Update status invoice dari webhook
         $invoice->updateStatusFromWebhook($status, $paidAmount, $paidAt);
 
         return response()->json(['status' => 'success']);
     }
-
-
-
 }

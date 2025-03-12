@@ -46,7 +46,10 @@ class DataTeknis extends Model
     public function pelanggan()
     {
         return $this->belongsTo(Pelanggan::class);
+        
     }
+
+
 
     // 🔗 Relasi ke Invoice
     public function invoices()
