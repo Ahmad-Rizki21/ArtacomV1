@@ -30,97 +30,102 @@ class XenditService
      * @param array $data
      * @return array
      */
-    public function processWebhook(array $data): array
-    {
-        try {
-            // Validasi data yang diterima
-            if (empty($data['external_id']) || empty($data['status'])) {
-                throw new Exception('Data webhook tidak lengkap');
-            }
-
-            // Cari invoice berdasarkan external_id yang diterima dari webhook
-            $invoice = Invoice::where('xendit_external_id', $data['external_id'])
-                             ->orWhere('invoice_number', $data['external_id'])
-                             ->first();
-
-            if (!$invoice) {
-                throw new Exception('Invoice tidak ditemukan');
-            }
-
-            // Pastikan tanggal invoice tersedia
-            if (empty($invoice->tgl_invoice)) {
-                Log::warning('tgl_invoice kosong pada webhook, menggunakan tanggal saat ini', [
-                    'invoice_number' => $invoice->invoice_number
-                ]);
-                $invoice->tgl_invoice = now()->format('Y-m-d');
-                $invoice->save();
-            }
-
-            // Update status invoice berdasarkan status yang diterima dari Xendit
-            $newStatus = self::STATUS_MAP[$data['status']] ?? 'Tidak Diketahui';
-            $invoice->status_invoice = $newStatus;
-            $invoice->xendit_id = $data['id'];
-            $invoice->paid_amount = $data['paid_amount'] ?? null;
-            $invoice->paid_at = $data['paid_at'] ?? null;
-            $invoice->save();
-
-            // Log hasil pembaruan status invoice
-            Log::info('Invoice status updated from webhook', [
-                'invoice_number' => $invoice->invoice_number,
-                'new_status' => $newStatus,
-                'tgl_invoice' => $invoice->tgl_invoice
-            ]);
-
-            // Jika invoice lunas, update tanggal jatuh tempo dan status langganan
-            if (in_array($newStatus, ['Lunas', 'Selesai'])) {
-                $langganan = $invoice->langganan;
-                
-                if ($langganan) {
-                    // Format tanggal invoice
-                    $tglInvoice = $invoice->tgl_invoice 
-                        ? Carbon::parse($invoice->tgl_invoice)->format('Y-m-d')
-                        : now()->format('Y-m-d');
-                        
-                    Log::info('Memperbarui langganan dari webhook Xendit', [
-                        'invoice_number' => $invoice->invoice_number,
-                        'tanggal_invoice' => $tglInvoice
-                    ]);
-                    
-                    // Update tanggal jatuh tempo dan tgl_invoice_terakhir pada langganan
-                    $langganan->updateTanggalJatuhTempo($tglInvoice);
-                    
-                    Log::info('Langganan berhasil diperbarui dari webhook', [
-                        'invoice_number' => $invoice->invoice_number,
-                        'pelanggan_id' => $invoice->pelanggan_id,
-                        'status_langganan' => $langganan->user_status,
-                        'tgl_jatuh_tempo' => $langganan->tgl_jatuh_tempo,
-                        'tgl_invoice_terakhir' => $langganan->tgl_invoice_terakhir
-                    ]);
-                } else {
-                    Log::warning('Langganan tidak ditemukan untuk invoice ini', [
-                        'invoice_number' => $invoice->invoice_number,
-                        'pelanggan_id' => $invoice->pelanggan_id
-                    ]);
-                }
-            }
-
-            return [
-                'status' => 'success',
-                'message' => 'Invoice berhasil diperbarui'
-            ];
-
-        } catch (Exception $e) {
-            Log::error('Error processing webhook', [
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
-            ]);
-
-            return [
-                'status' => 'error',
-                'message' => $e->getMessage()
-            ];
+        // Perbaikan untuk XenditService.php pada method processWebhook
+public function processWebhook(array $data): array
+{
+    try {
+        // Validasi data yang diterima
+        if (empty($data['external_id']) || empty($data['status'])) {
+            throw new Exception('Data webhook tidak lengkap');
         }
+
+        // Cari invoice berdasarkan external_id yang diterima dari webhook
+        $invoice = Invoice::where('xendit_external_id', $data['external_id'])
+                         ->orWhere('invoice_number', $data['external_id'])
+                         ->first();
+
+        if (!$invoice) {
+            throw new Exception('Invoice tidak ditemukan');
+        }
+
+        // Pastikan tanggal invoice tersedia
+        if (empty($invoice->tgl_invoice)) {
+            Log::warning('tgl_invoice kosong pada webhook, menggunakan tanggal saat ini', [
+                'invoice_number' => $invoice->invoice_number
+            ]);
+            $invoice->tgl_invoice = now()->format('Y-m-d');
+            $invoice->save();
+        }
+
+        // Update status invoice berdasarkan status yang diterima dari Xendit
+        $newStatus = self::STATUS_MAP[$data['status']] ?? 'Tidak Diketahui';
+        $invoice->status_invoice = $newStatus;
+        $invoice->xendit_id = $data['id'];
+        $invoice->paid_amount = $data['paid_amount'] ?? null;
+        $invoice->paid_at = $data['paid_at'] ?? null;
+        $invoice->save();
+
+        // Log hasil pembaruan status invoice
+        Log::info('Invoice status updated from webhook', [
+            'invoice_number' => $invoice->invoice_number,
+            'new_status' => $newStatus,
+            'tgl_invoice' => $invoice->tgl_invoice
+        ]);
+
+        // Jika invoice lunas, update tanggal jatuh tempo dan status langganan
+        if (in_array($newStatus, ['Lunas', 'Selesai'])) {
+            $langganan = $invoice->langganan;
+            
+            if ($langganan) {
+                // Format tanggal invoice
+                $tglInvoice = $invoice->tgl_invoice 
+                    ? Carbon::parse($invoice->tgl_invoice)->format('Y-m-d')
+                    : now()->format('Y-m-d');
+                    
+                Log::info('Memperbarui langganan dari webhook Xendit', [
+                    'invoice_number' => $invoice->invoice_number,
+                    'tanggal_invoice' => $tglInvoice
+                ]);
+                
+                // PERBAIKAN: Update tgl_invoice_terakhir secara manual untuk memastikan
+                $langganan->tgl_invoice_terakhir = $tglInvoice;
+                $langganan->save();
+                
+                // Update tanggal jatuh tempo dan tgl_invoice_terakhir pada langganan
+                $langganan->updateTanggalJatuhTempo($tglInvoice, $invoice->invoice_number);
+                
+                Log::info('Langganan berhasil diperbarui dari webhook', [
+                    'invoice_number' => $invoice->invoice_number,
+                    'pelanggan_id' => $invoice->pelanggan_id,
+                    'status_langganan' => $langganan->user_status,
+                    'tgl_jatuh_tempo' => $langganan->tgl_jatuh_tempo,
+                    'tgl_invoice_terakhir' => $langganan->tgl_invoice_terakhir
+                ]);
+            } else {
+                Log::warning('Langganan tidak ditemukan untuk invoice ini', [
+                    'invoice_number' => $invoice->invoice_number,
+                    'pelanggan_id' => $invoice->pelanggan_id
+                ]);
+            }
+        }
+
+        return [
+            'status' => 'success',
+            'message' => 'Invoice berhasil diperbarui'
+        ];
+
+    } catch (Exception $e) {
+        Log::error('Error processing webhook', [
+            'error' => $e->getMessage(),
+            'trace' => $e->getTraceAsString()
+        ]);
+
+        return [
+            'status' => 'error',
+            'message' => $e->getMessage()
+        ];
     }
+}
 
     /**
      * Membuat invoice di Xendit
@@ -437,7 +442,8 @@ class XenditService
                             'tanggal_invoice' => $tglInvoice
                         ]);
                         
-                        $langganan->updateTanggalJatuhTempo($tglInvoice);
+                        // PERBAIKAN: Menambahkan parameter invoice_number
+                        $langganan->updateTanggalJatuhTempo($tglInvoice, $invoice->invoice_number);
                     }
                 }
             }

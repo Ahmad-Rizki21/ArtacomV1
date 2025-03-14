@@ -58,8 +58,22 @@ class DataTeknisResource extends Resource
                     ->label('Password PPPoE')
                     ->required(),  // Wajib diisi
 
-                    TextInput::make('profile_pppoe')
+                    Select::make('profile_pppoe')
                     ->label('Profile PPPoE')
+                    ->options(function () {
+                        $profiles = [];
+                        $speeds = [10, 20, 30, 50];
+                        $suffixes = range('a', 'z');
+                
+                        foreach ($speeds as $speed) {
+                            foreach ($suffixes as $suffix) {
+                                $profiles[$speed . 'Mbps-' . $suffix] = $speed . ' Mbps-' . strtoupper($suffix);
+                            }
+                        }
+                
+                        return $profiles;
+                    })
+                    ->searchable()
                     ->required(),
                 
                 // Dropdown untuk memilih lokasi OLT
@@ -69,13 +83,10 @@ class DataTeknisResource extends Resource
                     'Nagrak' => 'Rusun Nagrak',
                     'Pinus Elok' => 'Rusun Pinus Elok',
                     'Pulogebang Tower' => 'Rusun Pulogebang Tower',
-                    'Pulogebang Blok' => 'Rusun Pulogebang Blok',
-                    'KM2' => 'Rusun KM2',
                     'Tipar Cakung' => 'Rusun Tipar Cakung',
                     'Tambun' => 'Rusun Tambun',
-                    'Pinus (Luar)' => 'Rusun Pinus (Luar)',
-                    'Pinus (KM2)' => 'Rusun Pinus (KM2)',
-                    'Albo' => 'Rusun Albo',
+                    'Parama' => 'Perumahan Parama',
+                    'Waringin' => 'Perumahan Waringin',
                     'Lainnya' => 'Lainnya',
                 ])
                 ->placeholder('Pilih OLT Rusun')
@@ -177,16 +188,13 @@ class DataTeknisResource extends Resource
                 SelectFilter::make('olt')
                     ->label('Filter OLT')
                     ->options([
-                        'Rusun Nagrak' => 'Rusun Nagrak',
-                        'Rusun Pinus Elok' => 'Rusun Pinus Elok',
-                        'Rusun Pulogebang Tower' => 'Rusun Pulogebang Tower',
-                        'Rusun Pulogebang Blok' => 'Rusun Pulogebang Blok',
-                        'Rusun KM2' => 'Rusun KM2',
-                        'Rusun Tipar Cakung' => 'Rusun Tipar Cakung',
-                        'Rusun Tambun' => 'Rusun Tambun',
-                        'Rusun Pinus (Luar)' => 'Rusun Pinus (Luar)',
-                        'Rusun Pinus (KM2)' => 'Rusun Pinus (KM2)',
-                        'Rusun Albo' => 'Rusun Albo',
+                        'Nagrak' => 'Rusun Nagrak',
+                        'Pinus Elok' => 'Rusun Pinus Elok',
+                        'Pulogebang Tower' => 'Rusun Pulogebang Tower',
+                        'Tipar Cakung' => 'Rusun Tipar Cakung',
+                        'Tambun' => 'Rusun Tambun',
+                        'Parama' => 'Perumahan Parama',
+                        'Waringin' => 'Perumahan Waringin',
                         'Lainnya' => 'Lainnya', // Opsi untuk input manual
                     ])
             ])

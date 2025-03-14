@@ -19,6 +19,10 @@ use Illuminate\Session\Middleware\AuthenticateSession;
 use Illuminate\Session\Middleware\StartSession;
 use Illuminate\View\Middleware\ShareErrorsFromSession;
 use App\Filament\Pages\EditProfilePage; // Tambahkan ini untuk edit profil
+use Devonab\FilamentEasyFooter\EasyFooterPlugin;
+// use DiogoGPinto\AuthUIEnhancer\AuthUIEnhancerPlugin;
+// use Icetalker\FilamentTableRepeater\Forms\Components\TableRepeater;
+
 
 class AdminPanelProvider extends PanelProvider
 {
@@ -44,6 +48,7 @@ class AdminPanelProvider extends PanelProvider
             ])
             
             ->login()
+            ->registration()
             ->spa()
             ->sidebarCollapsibleOnDesktop()
             ->sidebarFullyCollapsibleOnDesktop()
@@ -87,6 +92,17 @@ class AdminPanelProvider extends PanelProvider
             ->plugins([
                 \BezhanSalleh\FilamentShield\FilamentShieldPlugin::make(),
                 \Cmsmaxinc\FilamentErrorPages\FilamentErrorPagesPlugin::make(),
+                EasyFooterPlugin::make()
+                ->withBorder()
+                ->withLogo(
+                    'https://ajnusa.com/images/artacom.png', // Path to logo
+                    'https://ajnusa.com/'                                // URL for logo link (optional)
+                )
+                ->withLinks([
+                    ['title' => 'Dev', 'url' => 'https://www.instagram.com/amad.dyk/'],
+                ])
+                ->withLoadTime('This page loaded in'),
+
             ])
             ->databaseNotifications();
     }

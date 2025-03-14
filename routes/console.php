@@ -5,6 +5,7 @@ use Illuminate\Support\Facades\Artisan;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Schedule;
 use App\Services\GeneratorDueInvoices;
+use App\Models\Langganan;
 
 Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
@@ -37,3 +38,8 @@ Artisan::command('inspire', function () {
 // Command untuk menjalankan invoice
 // Schedule::call(new GeneratorDueInvoices)->everyMinute();
 Schedule::command('invoice:generate-due')->everyMinute();
+Schedule::command('app:check-overdue-subscriptions')->everyMinute();
+Schedule::command('app:sync-mikrotik')->everyMinute();
+// Schedule::call(function () {
+//     Langganan::checkAllSubscriptionStatus();
+// })->everyMinute();
