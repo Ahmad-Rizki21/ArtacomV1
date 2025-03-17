@@ -11,8 +11,10 @@ class JumlahInvoiceBulananChart extends ChartWidget
 {
     protected static ?string $heading = 'Jumlah Invoice Setiap Bulannya';
     
+    protected static ?int $sort = 3;
     // Gunakan columnSpan untuk mengatur lebar
     protected int | string | array $columnSpan = 'full';
+
     
     protected static ?string $pollingInterval = '60s';
     

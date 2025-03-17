@@ -6,6 +6,8 @@ use App\Filament\Resources\LanggananResource\Pages;
 use App\Models\Langganan;
 use App\Models\Pelanggan;
 use App\Models\HargaLayanan;
+use Filament\Tables\Actions\Action;
+use Filament\Tables\Columns\IconColumn;
 use Filament\Forms\Form;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
@@ -274,6 +276,12 @@ class LanggananResource extends Resource
                         'Tidak Ada Invoice' => 'warning',
                         'Kadaluarsa' => 'warning',
                         default => 'gray',
+                    })
+                    ->icon(fn (string $state): string => match ($state) {
+                        'Aktif' => 'heroicon-o-check-circle',
+                        'Suspend' => 'heroicon-o-clock',
+                        'Tidak Ada Invoice' => 'heroicon-o-pencil',
+                        'Kadaluarsa' => 'heroicon-o-trash',
                     }),
 
 
@@ -304,6 +312,11 @@ class LanggananResource extends Resource
                     ->label('Filter Brand')
                     ->relationship('hargaLayanan', 'brand')
             ])
+            ->filtersTriggerAction(
+                fn (Action $action) => $action
+                    ->button()
+                    ->label('Filter'),
+            )
             ->actions([
                 EditAction::make(),
                 DeleteAction::make()
@@ -319,7 +332,7 @@ class LanggananResource extends Resource
                             ->title('🗑️ Data Berlangganan Telah Dihapus!')
                             ->body('Pelanggan ini telah dihapus secara permanen.')
                             ->send();
-                    }),
+                    })
             ])
             ->bulkActions([
                 DeleteBulkAction::make()

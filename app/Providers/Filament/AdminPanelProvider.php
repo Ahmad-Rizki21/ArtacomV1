@@ -24,6 +24,7 @@ use Devonab\FilamentEasyFooter\EasyFooterPlugin;
 // use Icetalker\FilamentTableRepeater\Forms\Components\TableRepeater;
 
 
+
 class AdminPanelProvider extends PanelProvider
 {
     public function panel(Panel $panel): Panel
@@ -57,8 +58,14 @@ class AdminPanelProvider extends PanelProvider
             
             // ->brandLogo(asset('images/jelantik.jpeg'))
             ->brandName('Artacom Billing System')
+            ->font('Poppins')
             ->colors([
-                'primary' => Color::Amber,
+                'danger' => Color::Rose,
+                'gray' => Color::Gray,
+                'info' => Color::Blue,
+                'primary' => Color::Indigo,
+                'success' => Color::Emerald,
+                'warning' => Color::Orange,
             ])
             ->discoverResources(in: app_path('Filament/Resources'), for: 'App\\Filament\\Resources')
             ->discoverPages(in: app_path('Filament/Pages'), for: 'App\\Filament\\Pages')
@@ -73,6 +80,9 @@ class AdminPanelProvider extends PanelProvider
                 // \App\Filament\Widgets\JumlahPelangganJelantikChart::class,  // Widget
 
                 
+            ])
+            ->resources([
+                config('filament-logger.activity_resource')
             ])
             ->middleware([
                 EncryptCookies::class,
@@ -102,6 +112,10 @@ class AdminPanelProvider extends PanelProvider
                     ['title' => 'Dev', 'url' => 'https://www.instagram.com/amad.dyk/'],
                 ])
                 ->withLoadTime('This page loaded in'),
+
+               
+                
+                
 
             ])
             ->databaseNotifications();

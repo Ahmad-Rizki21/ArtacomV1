@@ -105,7 +105,7 @@ class MikrotikSubscriptionManager
      */
     protected function extractProfileSuffix(string $profile): string
     {
-        if (preg_match('/\d+Mbps-([a-z])/i', $profile, $matches)) {
+        if (preg_match('/\d+Mbps-([A-Z])/i', $profile, $matches)) {
             return strtolower($matches[1]);
         }
         return 'u'; // default suffix

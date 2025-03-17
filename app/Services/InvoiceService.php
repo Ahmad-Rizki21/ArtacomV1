@@ -39,6 +39,7 @@ class InvoiceService
                     'tgl_invoice' => now(),
                     'tgl_jatuh_tempo' => $langganan->tgl_jatuh_tempo,
                     'status_invoice' => 'Menunggu Pembayaran',
+                    'description' => 'Tagihan bulan ' . now()->format('F Y'),
                     'brand' => $langganan->id_brand
                 ]);
 

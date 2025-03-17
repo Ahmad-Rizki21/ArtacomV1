@@ -44,7 +44,6 @@ class Kernel extends ConsoleKernel
             Langganan::checkAllSubscriptionStatus();
         })->everyMinute();
 
-        
 
         // \App\Console\Commands\MonitorSubscriptionStatus::class  // Daftarkan perintah di sini
         // ->everyMinute()
