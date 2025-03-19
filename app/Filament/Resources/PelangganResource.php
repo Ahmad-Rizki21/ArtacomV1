@@ -232,8 +232,7 @@ class PelangganResource extends Resource
                     ->label('No. Telepon')
                     ->copyable()
                     ->searchable()
-                    ->toggleable()
-                    ->formatStateUsing(fn (string $state): string => '+62' . $state),
+                    ->toggleable(),
 
                 TextColumn::make('email')
                     ->label('Email')
