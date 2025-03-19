@@ -381,6 +381,13 @@ class InvoiceResource extends Resource
                     ->url(fn ($record) => $record->payment_link ?? '#')
                     ->openUrlInNewTab()
                     ->visible(fn ($record) => !empty($record->payment_link)),
+
+                    Action::make('view')
+                    ->label('Lihat Invoice')
+                    ->icon('heroicon-o-eye')
+                    ->color('primary')
+                    ->url(fn (Invoice $record) => route('invoice.view', $record->id))
+                    ->openUrlInNewTab(),
                     
                 Action::make('copy_payment_link')
                     ->label('Salin Link')
