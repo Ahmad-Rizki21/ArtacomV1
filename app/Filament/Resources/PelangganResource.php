@@ -100,11 +100,11 @@ class PelangganResource extends Resource
                                             ->options([
                                                 'Rusun Nagrak' => 'Rusun Nagrak',
                                                 'Rusun Pinus Elok' => 'Rusun Pinus Elok',
-                                                'Rusun Pulogebang Tower' => 'Rusun Pulogebang Tower',
-                                                'Rusun Pulogebang Blok' => 'Rusun Pulogebang Blok',
+                                                'Rusun Pulogebang' => 'Rusun Pulogebang Tower',
                                                 'Rusun KM2' => 'Rusun KM2',
                                                 'Rusun Tipar Cakung' => 'Rusun Tipar Cakung',
                                                 'Rusun Albo' => 'Rusun Albo',
+                                                'Perumahan Tambun' => 'Perumahan Tambun',
                                                 'Perumahan Waringin' => 'Perumahan Waringin Kurung',
                                                 'Perumahan Parama' => 'Perumahan Parama Serang',
                                                 'Lainnya' => 'Lainnya'

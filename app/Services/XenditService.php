@@ -311,18 +311,28 @@ public function processWebhook(array $data): array
     }
 
     /**
-     * Siapkan payload untuk Xendit
-     *
-     * @param Invoice $invoice
-     * @param string|null $traceId
-     * @return array
-     */
+ * Siapkan payload untuk Xendit
+ *
+ * @param Invoice $invoice
+ * @param string|null $traceId
+ * @return array
+ */
     private function prepareXenditPayload(Invoice $invoice, ?string $traceId = null): array
     {
+        // Generate reference ID berdasarkan brand dan lokasi
+        $referenceId = $this->formatReferenceId($invoice);
+        
+        // Simpan reference ID ke invoice untuk tracking
+        $invoice->xendit_external_id = $referenceId;
+        $invoice->save();
+        
+        // Buat deskripsi berdasarkan paket internet yang dipilih
+        $description = $this->generatePackageDescription($invoice);
+        
         return [
-            'external_id' => $invoice->invoice_number,
+            'external_id' => $referenceId, // Gunakan reference ID custom sebagai external_id
             'payer_email' => $invoice->email,
-            'description' => "Pembayaran Invoice #{$invoice->invoice_number}",
+            'description' => $description,
             'amount' => (int) $invoice->total_harga,
             'customer' => [
                 'given_names' => $invoice->pelanggan->nama ?? 'Pelanggan',
@@ -336,10 +346,172 @@ public function processWebhook(array $data): array
                 'invoice_paid' => ['email', 'whatsapp'],
             ],
             'metadata' => [
+                'brand' => $invoice->brand,
+                'invoice_number' => $invoice->invoice_number,
                 'trace_id' => $traceId ?? uniqid('xendit_', true)
             ]
         ];
     }
+
+/**
+ * Format reference ID berdasarkan brand dan lokasi
+ */
+private function formatReferenceId(Invoice $invoice): string
+{
+    // Ambil brand dari invoice
+    $brand = strtolower($invoice->brand);
+    
+    // Dapatkan nama pelanggan (ambil kata pertama saja)
+    $pelanggan = $invoice->pelanggan;
+    $namaPelanggan = $pelanggan ? strtolower(explode(' ', trim($pelanggan->nama))[0]) : 'customer';
+    
+    // Dapatkan bulan dalam bahasa Inggris
+    $bulan = date('F', strtotime($invoice->tgl_invoice ?? now()));
+    
+    // Dapatkan kode lokasi dari alamat pelanggan
+    $kodeLokasi = $this->getKodeLokasiFromPelanggan($invoice);
+    
+    // Untuk ajn-03, gunakan format yang sama dengan ajn-02 (Jelantik)
+    if ($brand === 'ajn-03') {
+        return "jelantik/ftth/{$bulan}/{$namaPelanggan}/{$kodeLokasi}";
+    }
+    
+    // Format berdasarkan brand
+    switch ($brand) {
+        case 'ajn-01': // Jakinet
+            return "jakinet/ftth/{$bulan}/{$namaPelanggan}/{$kodeLokasi}";
+            
+        case 'ajn-02': // Jelantik (termasuk Nagrak/ajn-03)
+            return "jelantik/ftth/{$bulan}/{$namaPelanggan}/{$kodeLokasi}";
+            
+        default:
+            // Default ke invoice number jika tidak ada format khusus
+            return $invoice->invoice_number;
+    }
+}
+
+/**
+ * Mendapatkan kode lokasi dari alamat pelanggan
+ */
+private function getKodeLokasiFromPelanggan(Invoice $invoice): string
+{
+    // Ambil alamat dari pelanggan
+    $pelanggan = $invoice->pelanggan;
+    if (!$pelanggan) {
+        return $this->getDefaultKodeLokasi($invoice->brand);
+    }
+    
+    $alamat = strtolower($pelanggan->alamat ?? '');
+    
+    // Mapping kata kunci lokasi ke kode
+    $keywordMap = [
+        'nagrak' => 'NGR',
+        'pinus' => 'PIN A',
+        'pulogebang' => 'PGB',
+        'tipar' => 'CKG TPR',
+        'cakung' => 'CKG TPR',
+        'km2' => 'KM2',
+        'albo' => 'ALBO',
+        'tambun' => 'TMB',
+        'waringin' => 'WRG KRG',
+        'parama' => 'PRM SRG',
+    ];
+    
+    // Cari kode lokasi berdasarkan alamat
+    foreach ($keywordMap as $keyword => $code) {
+        if (stripos($alamat, $keyword) !== false) {
+            return $code;
+        }
+    }
+    
+    // Default berdasarkan brand
+    return $this->getDefaultKodeLokasi($invoice->brand);
+}
+
+/**
+ * Mendapatkan kode lokasi default berdasarkan brand
+ */
+private function getDefaultKodeLokasi(string $brand): string
+{
+    $defaultKode = [
+        'ajn-01' => 'CKG TPR',  // Default untuk Jakinet
+        'ajn-02' => 'NGR',      // Default untuk Jelantik
+        'ajn-03' => 'NGR'       // Default untuk Nagrak (masuk ke Jelantik)
+    ];
+    
+    return $defaultKode[strtolower($brand)] ?? 'CKG TPR';
+}
+
+/**
+ * Generate deskripsi berdasarkan paket internet
+ *
+ * @param Invoice $invoice
+ * @return string
+ */
+private function generatePackageDescription(Invoice $invoice): string
+{
+    // Coba dapatkan informasi paket dari langganan
+    $langganan = $invoice->langganan;
+    if ($langganan) {
+        // Prioritaskan nilai dari kolom layanan jika tersedia
+        if (!empty($langganan->layanan)) {
+            // Coba ekstrak kecepatan dari layanan
+            preg_match('/(\d+)\s*[Mm][Bb][Pp][Ss]/i', $langganan->layanan, $matches);
+            if (!empty($matches[1])) {
+                $speed = $matches[1];
+                return "Biaya berlangganan internet up to {$speed} Mbps";
+            }
+            
+            // Jika tidak bisa ekstrak tapi ada nilai layanan, tambahkan "up to"
+            return "Biaya berlangganan internet up to {$langganan->layanan}";
+        }
+        
+        // Jika tidak ada kolom layanan, coba nama_layanan
+        if (!empty($langganan->nama_layanan)) {
+            // Coba ekstrak kecepatan dari nama layanan
+            preg_match('/(\d+)\s*[Mm][Bb][Pp][Ss]/i', $langganan->nama_layanan, $matches);
+            if (!empty($matches[1])) {
+                $speed = $matches[1];
+                return "Biaya berlangganan internet up to {$speed} Mbps";
+            }
+        }
+        
+        // Jika ada kecepatan di profil, gunakan itu
+        if (!empty($langganan->profile_pppoe)) {
+            // Coba ekstrak kecepatan dari profile_pppoe
+            preg_match('/(\d+)[Mm][Bb]/i', $langganan->profile_pppoe, $matches);
+            if (!empty($matches[1])) {
+                $speed = $matches[1];
+                return "Biaya berlangganan internet up to {$speed} Mbps";
+            }
+        }
+        
+        // Default ke total harga jika semua opsi sebelumnya gagal
+        $harga = $invoice->total_harga ?? $langganan->total_harga_layanan_x_pajak ?? 0;
+        
+        if ($harga > 0) {
+            // Sesuaikan range harga dengan paket yang tersedia
+            if ($harga <= 150000) {
+                return "Biaya berlangganan internet up to 10 Mbps";
+            } elseif ($harga <= 200000) {
+                return "Biaya berlangganan internet up to 20 Mbps";
+            } elseif ($harga <= 250000) {
+                return "Biaya berlangganan internet up to 30 Mbps";
+            } elseif ($harga <= 300000) {
+                return "Biaya berlangganan internet up to 50 Mbps";
+            } else {
+                return "Biaya berlangganan internet up to 100 Mbps";
+            }
+        }
+    }
+    
+    // Default jika tidak bisa menentukan paket
+    if (!empty($invoice->description)) {
+        return $invoice->description;
+    }
+    
+    return "Biaya berlangganan internet";
+}
 
     /**
      * Proses respons dari Xendit
