@@ -36,6 +36,10 @@ class Kernel extends ConsoleKernel
         //  ->at('00:01')
                  ->appendOutputTo(storage_path('logs/subscription-checks.log'));
 
+        $schedule->command('check:due-date')
+        ->everyMinute()
+        ->appendOutputTo(storage_path('logs/due-date-check.log'));
+
         $schedule->command('app:sync-mikrotik-status')
         ->everyMinute()
         ->appendOutputTo(storage_path('logs/mikrotik-sync.log'));
