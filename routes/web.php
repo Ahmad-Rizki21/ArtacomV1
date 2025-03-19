@@ -2,8 +2,10 @@
 
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\InvoiceController;
+
 use App\Http\Controllers\XenditInvoiceStatusController;
 use App\Http\Controllers\InvoiceViewController;
+use App\Http\Controllers\PaymentController;
 
 // Halaman utama
 Route::get('/', function () {
@@ -11,10 +13,10 @@ Route::get('/', function () {
 });
 
 // Menampilkan invoice berdasarkan nomor invoice untuk halaman admin atau frontend
-Route::get('invoices/{invoiceNumber}', [InvoiceController::class, 'show'])->name('invoices.show');
+Route::get('invoices/{invoiceNumber}', [PaymentController::class, 'show'])->name('invoices.show');
 
 // Menampilkan form untuk membuat invoice atau halaman terkait
-Route::post('/invoice/create', [InvoiceController::class, 'createInvoice'])
+Route::post('/invoice/create', [PaymentController::class, 'createInvoice'])
     ->name('invoice.create');
 
 

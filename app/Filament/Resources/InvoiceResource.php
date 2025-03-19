@@ -22,6 +22,7 @@ use Filament\Forms\Components\Section;
 use Filament\Forms\Components\Grid;
 use Filament\Forms\Components\Card;
 use Filament\Forms\Components\Placeholder;
+use pxlrbt\FilamentExcel\Actions\Tables\ExportBulkAction;
 use Filament\Forms\Components\Group;
 use Filament\Forms\Components\Fieldset;
 use Filament\Forms\Components\ViewField;
@@ -440,6 +441,7 @@ class InvoiceResource extends Resource
                     }),
             ])
             ->bulkActions([
+                ExportBulkAction::make(),
                 Tables\Actions\BulkAction::make('mark_bulk_as_paid')
                     ->label('Tandai Lunas')
                     ->icon('heroicon-o-check-circle')
