@@ -1,8 +1,14 @@
 <?php
 
+use App\Http\Controllers\ExportController;
+use App\Http\Controllers\InvoiceExportController;
+use App\Http\Controllers\PelangganImportController;
+use App\Http\Controllers\TemplateController;
+use App\Http\Controllers\LanggananController;
 use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\DataTeknisController;
 use App\Http\Controllers\InvoiceController;
-
+use App\Http\Controllers\PelangganExportController;
 use App\Http\Controllers\XenditInvoiceStatusController;
 use App\Http\Controllers\InvoiceViewController;
 use App\Http\Controllers\PaymentController;
@@ -30,3 +36,49 @@ Route::get('/invoice/print/{invoice}', [InvoiceViewController::class, 'print'])-
 
 // // Pengecekan status invoice (untuk admin atau halaman tertentu)
 // Route::get('/invoice/status/{invoiceNumber}', [XenditInvoiceStatusController::class, 'checkStatus']);
+
+
+//Excel
+Route::get('invoices/export', [InvoiceExportController::class, 'export'])->name('invoices.export');
+// di routes/web.php
+Route::post('pelanggan/import', [PelangganImportController::class, 'import'])->name('pelanggan.import');
+// di routes/web.php
+Route::get('pelanggan/template/download', [TemplateController::class, 'downloadPelangganTemplate'])->name('pelanggan.template.download');
+
+
+// di routes/web.php
+Route::get('pelanggan/export', [PelangganExportController::class, 'showExportForm'])->name('pelanggan.export.form');
+Route::post('pelanggan/export', [PelangganExportController::class, 'export'])->name('pelanggan.export');
+
+// Rute untuk ekspor template Data Teknis
+Route::get('data-teknis/template/download', [DataTeknisController::class, 'downloadTemplate'])
+    ->name('data-teknis.template.download');
+
+// Rute untuk ekspor Data Teknis
+Route::get('data-teknis/export', [DataTeknisController::class, 'showExportForm'])
+    ->name('data-teknis.export.form');
+Route::post('data-teknis/export', [DataTeknisController::class, 'export'])
+    ->name('data-teknis.export');
+
+// Rute untuk impor Data Teknis
+Route::get('data-teknis/import', [DataTeknisController::class, 'showImportForm'])
+    ->name('data-teknis.import.form');
+Route::post('data-teknis/import', [DataTeknisController::class, 'import'])
+    ->name('data-teknis.import');
+
+
+    // Rute untuk download template Langganan
+Route::get('langganan/template/download', [LanggananController::class, 'downloadTemplate'])
+->name('langganan.template.download');
+
+// Rute untuk export Langganan
+Route::get('langganan/export', [LanggananController::class, 'showExportForm'])
+->name('langganan.export.form');
+Route::post('langganan/export', [LanggananController::class, 'export'])
+->name('langganan.export');
+
+// Rute untuk import Langganan
+Route::get('langganan/import', [LanggananController::class, 'showImportForm'])
+->name('langganan.import.form');
+Route::post('langganan/import', [LanggananController::class, 'import'])
+->name('langganan.import');
