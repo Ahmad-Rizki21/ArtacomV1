@@ -128,7 +128,7 @@ class DataTeknisResource extends Resource
                                                 'Pinus Elok' => 'Rusun Pinus Elok',
                                                 'Pulogebang Tower' => 'Rusun Pulogebang Tower',
                                                 'Tipar Cakung' => 'Rusun Tipar Cakung',
-                                                'Tambun' => 'Rusun Tambun',
+                                                'Tambun' => 'Perumahan Tambun',
                                                 'Parama' => 'Perumahan Parama',
                                                 'Waringin' => 'Perumahan Waringin',
                                                 'Lainnya' => 'Lainnya',
