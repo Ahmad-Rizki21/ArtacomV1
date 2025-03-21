@@ -12,8 +12,15 @@ Route::get('/invoice/status/{invoiceNumber}', [PaymentController::class, 'checkS
     ->name('invoice.check-status');
 
 // Endpoint untuk menerima webhook dari Xendit dan memperbarui status invoice
+// Tidak perlu middleware auth karena akan dipanggil oleh Xendit
 Route::post('/xendit/webhook', [PaymentController::class, 'handleWebhook'])
-    ->name('xendit.webhook');
+    ->name('xendit.webhook')
+    ->withoutMiddleware(['auth:api', 'auth:sanctum', 'auth']); // Pastikan tidak ada auth middleware
+
+// Endpoint alternatif untuk callback Xendit (jika Anda menggunakan handleXenditCallback)
+Route::post('/xendit/callback', [PaymentController::class, 'handleXenditCallback'])
+    ->name('xendit.callback')
+    ->withoutMiddleware(['auth:api', 'auth:sanctum', 'auth']); // Pastikan tidak ada auth middleware
 
 // Endpoint untuk update status invoice manual (untuk debugging)
 Route::post('/invoice/update-status', [PaymentController::class, 'updateStatus'])

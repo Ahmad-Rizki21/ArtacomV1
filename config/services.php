@@ -35,6 +35,11 @@ return [
         ],
     ],
 
-        
+    'xendit' => [
+    'api_key_jakinet' => env('XENDIT_API_KEY_JAKINET'),
+    'api_key_jelantik' => env('XENDIT_API_KEY_JELANTIK'), 
+    'webhook_token' => env('XENDIT_WEBHOOK_TOKEN'),
+    'api_url' => env('XENDIT_API_URL', 'https://api.xendit.co/v2/invoices'),
+    ],
 
 ];
