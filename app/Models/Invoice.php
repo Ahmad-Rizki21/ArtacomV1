@@ -34,14 +34,24 @@ class Invoice extends Model
         'paid_at'
     ];
 
-    protected $dates = ['deleted_at', 'tgl_invoice', 'tgl_jatuh_tempo', 'paid_at'];
+    // Pastikan created_at dan updated_at dikelola dengan benar
+    protected $dates = [
+        'deleted_at', 
+        'tgl_invoice', 
+        'tgl_jatuh_tempo', 
+        'paid_at',
+        'created_at',
+        'updated_at'
+    ];
 
     protected $casts = [
         'total_harga' => 'decimal:2',
         'tgl_invoice' => 'date',
         'tgl_jatuh_tempo' => 'date',
         'paid_amount' => 'decimal:2',
-        'paid_at' => 'datetime'
+        'paid_at' => 'datetime',
+        'created_at' => 'datetime',
+        'updated_at' => 'datetime'
     ];
 
     // Daftar status yang valid

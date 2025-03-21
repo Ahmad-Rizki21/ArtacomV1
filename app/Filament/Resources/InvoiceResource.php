@@ -332,7 +332,14 @@ class InvoiceResource extends Resource
                     ->url(fn ($record) => $record->payment_link ?? '')
                     ->openUrlInNewTab()
                     ->toggleable(isToggledHiddenByDefault: false)
-                    ->visible(fn ($record) => !empty($record->payment_link))
+                    ->visible(fn ($record) => !empty($record->payment_link)),
+                    
+                // Menambahkan kolom created_at sebagai kolom tersembunyi untuk pengurutan
+                TextColumn::make('created_at')
+                    ->label('Tanggal Dibuat')
+                    ->dateTime('d M Y H:i:s')
+                    ->sortable()
+                    ->toggleable(isToggledHiddenByDefault: true),
             ])
             ->filters([
                 SelectFilter::make('status_invoice')
@@ -382,7 +389,7 @@ class InvoiceResource extends Resource
                     ->openUrlInNewTab()
                     ->visible(fn ($record) => !empty($record->payment_link)),
 
-                    Action::make('view')
+                Action::make('view')
                     ->label('Lihat Invoice')
                     ->icon('heroicon-o-eye')
                     ->color('primary')
@@ -474,7 +481,10 @@ class InvoiceResource extends Resource
                     ->modalCancelActionLabel('Batal')
                     ->successNotificationTitle('🗑️ Invoice Berhasil Dihapus!')
             ])
-            ->defaultSort('tgl_invoice', 'desc')
+            // Mengubah defaultSort untuk menggunakan created_at dengan urutan descending (terbaru di atas)
+            ->defaultSort('created_at', 'desc')
+            // Membuat pengurutan tetap konsisten saat polling
+            ->persistSortInSession()
             ->poll('60s'); // Refresh data setiap 60 detik
     }
 

@@ -128,9 +128,9 @@ class DataTeknisResource extends Resource
                                                 'Pinus Elok' => 'Rusun Pinus Elok',
                                                 'Pulogebang Tower' => 'Rusun Pulogebang Tower',
                                                 'Tipar Cakung' => 'Rusun Tipar Cakung',
-                                                'Tambun' => 'Perumahan Tambun',
-                                                'Parama' => 'Perumahan Parama',
-                                                'Waringin' => 'Perumahan Waringin',
+                                                'Tambun' => 'Tambun',
+                                                'Parama' => 'Parama',
+                                                'Waringin' => 'Waringin',
                                                 'Lainnya' => 'Lainnya',
                                             ])
                                             ->placeholder('Pilih OLT Rusun')
