@@ -144,6 +144,7 @@ class MikrotikServerResource extends Resource
                     ->label('Active Status')
             ])
             ->actions([
+                Tables\Actions\ViewAction::make(),
                 Tables\Actions\EditAction::make(),
                 
                 // Action untuk test koneksi di tabel

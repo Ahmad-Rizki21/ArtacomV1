@@ -8,6 +8,8 @@ use App\Models\Invoice;
 use App\Models\HargaLayanan;
 use Exception;
 use Carbon\Carbon;
+use Filament\Notifications\Livewire\DatabaseNotifications;
+
 
 class XenditService
 {
@@ -84,6 +86,10 @@ class XenditService
             if (!$invoice) {
                 throw new Exception('Invoice tidak ditemukan');
             }
+
+            // Trigger pembaruan UI notifikasi secara realtime
+   
+            DatabaseNotifications::trigger('filament.notifications.database-notifications-trigger');
 
             // Pastikan tanggal invoice tersedia
             if (empty($invoice->tgl_invoice)) {
@@ -465,39 +471,39 @@ private function formatReferenceId(Invoice $invoice): string
      * Mendapatkan kode lokasi dari alamat pelanggan
      */
     private function getKodeLokasiFromPelanggan(Invoice $invoice): string
-    {
-        // Ambil alamat dari pelanggan
-        $pelanggan = $invoice->pelanggan;
-        if (!$pelanggan) {
-            return $this->getDefaultKodeLokasi($invoice->brand);
-        }
-        
-        $alamat = strtolower($pelanggan->alamat ?? '');
-        
-        // Mapping kata kunci lokasi ke kode
-        $keywordMap = [
-            'nagrak' => 'NGR',
-            'pinus' => 'PIN A',
-            'pulogebang' => 'PGB',
-            'tipar' => 'CKG TPR',
-            'cakung' => 'CKG TPR',
-            'km2' => 'KM2',
-            'albo' => 'ALBO',
-            'tambun' => 'TMB',
-            'waringin' => 'WRG KRG',
-            'parama' => 'PRM SRG',
-        ];
-        
-        // Cari kode lokasi berdasarkan alamat
-        foreach ($keywordMap as $keyword => $code) {
-            if (stripos($alamat, $keyword) !== false) {
-                return $code;
-            }
-        }
-        
-        // Default berdasarkan brand
+{
+    // Ambil alamat dari pelanggan
+    $pelanggan = $invoice->pelanggan;
+    if (!$pelanggan) {
         return $this->getDefaultKodeLokasi($invoice->brand);
     }
+    
+    $alamat = strtolower($pelanggan->alamat ?? '');
+    
+    // Mapping kata kunci lokasi ke nama lokasi lengkap
+    $keywordMap = [
+        'nagrak' => 'Nagrak',
+        'pinus' => 'Pinus Elok',
+        'pulogebang' => 'Pulogebang',
+        'tipar' => 'Tipar Cakung',
+        'cakung' => 'Tipar Cakung',
+        'km2' => 'KM2',
+        'albo' => 'ALBO',
+        'tambun' => 'Tambun',
+        'waringin' => 'Waringin',
+        'parama' => 'Parama',
+    ];
+    
+    // Cari kode lokasi berdasarkan alamat
+    foreach ($keywordMap as $keyword => $code) {
+        if (stripos($alamat, $keyword) !== false) {
+            return $code;
+        }
+    }
+    
+    // Default berdasarkan brand
+    return $this->getDefaultKodeLokasi($invoice->brand);
+}
 
     /**
      * Mendapatkan kode lokasi default berdasarkan brand
@@ -505,9 +511,9 @@ private function formatReferenceId(Invoice $invoice): string
     private function getDefaultKodeLokasi(string $brand): string
     {
         $defaultKode = [
-            'ajn-01' => 'CKG TPR',  // Default untuk Jakinet
-            'ajn-02' => 'NGR',      // Default untuk Jelantik
-            'ajn-03' => 'NGR'       // Default untuk Nagrak (masuk ke Jelantik)
+            'ajn-01' => 'Jakinet',  // Default untuk Jakinet
+            'ajn-02' => 'Jelantik',      // Default untuk Jelantik
+            'ajn-03' => 'Jelantik Nagrak'       // Default untuk Nagrak (masuk ke Jelantik)
         ];
         
         return $defaultKode[strtolower($brand)] ?? 'CKG TPR';

@@ -33,7 +33,7 @@ class AdminPanelProvider extends PanelProvider
             ->default()
             ->id('admin')
             ->path('admin')
-            
+            ->databaseNotifications()
             ->userMenuItems([
                 'profile' => MenuItem::make()
                     ->label(fn () => Auth::user()->name)

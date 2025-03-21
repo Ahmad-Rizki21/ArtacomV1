@@ -27,6 +27,7 @@ use Filament\Tables\Actions\EditAction;
 use Filament\Tables\Actions\DeleteAction;
 use Filament\Tables\Actions\DeleteBulkAction;
 use Illuminate\Support\Facades\Log;
+use Filament\Tables\Actions\ViewAction;
 use Carbon\Carbon;
 
 class LanggananResource extends Resource
@@ -307,6 +308,7 @@ class LanggananResource extends Resource
             )
             ->actions([
                 EditAction::make(),
+                ViewAction::make(),
                 DeleteAction::make()
                     ->requiresConfirmation()
                     ->modalHeading('Konfirmasi Hapus Data Berlangganan')
