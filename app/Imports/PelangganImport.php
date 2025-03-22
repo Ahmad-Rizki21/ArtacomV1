@@ -36,7 +36,7 @@ class PelangganImport implements ToCollection, WithHeadingRow, WithCustomCsvSett
         
         foreach ($rows as $index => $row) {
             try {
-                // Format no_ktp - pad with zeros if numeric
+                // Format no_ktp
                 $noKtp = "00000000";
                 if (isset($row['no_ktp'])) {
                     if (is_numeric($row['no_ktp'])) {
@@ -46,43 +46,60 @@ class PelangganImport implements ToCollection, WithHeadingRow, WithCustomCsvSett
                     }
                 }
                 
-                // Format phone numbers correctly and preserve N/A
+                // Format phone numbers
                 $noTelp = "";
                 if (isset($row['no_telp'])) {
                     if (is_numeric($row['no_telp'])) {
-                        // Convert scientific notation to regular number
                         $noTelp = sprintf("%.0f", (float)$row['no_telp']);
                     } else {
-                        $noTelp = (string)$row['no_telp']; // Keep N/A as is
+                        $noTelp = (string)$row['no_telp'];
                     }
                 }
                 
-                // Format alamat properly - FIXED to remove "n" between Perumahan and location
+                // ALAMAT FIX - Check all possible patterns carefully
                 $alamat = "";
                 if (isset($row['alamat'])) {
-                    if (stripos($row['alamat'], 'Perumaha') === 0) {
-                        // Fix truncated "Perumahan" text
-                        if (stripos($row['alamat'], 'PerumahaC') === 0) {
-                            $alamat = "Perumahan Tambun"; // Remove "n"
-                        } else if (stripos($row['alamat'], 'PerumahaN/A') === 0) {
-                            $alamat = "Perumahan Tambun"; // Remove "n"
-                        } else if (stripos($row['alamat'], 'PerumahaB') === 0) {
-                            $alamat = "Perumahan Waringin"; // Remove "n"
-                        } else if (stripos($row['alamat'], 'PerumahaA') === 0) {
-                            $alamat = "Perumahan Waringin"; // Remove "n"
+                    $alamatValue = (string)$row['alamat'];
+                    
+                    // Direct replacement for any "Perumahan n" patterns
+                    if (strpos($alamatValue, 'Perumahan n ') !== false) {
+                        $alamat = str_replace('Perumahan n ', 'Perumahan ', $alamatValue);
+                    }
+                    // Excel truncated patterns
+                    else if (strpos($alamatValue, 'Perumaha') === 0) {
+                        if (preg_match('/PerumahaC/i', $alamatValue)) {
+                            $alamat = "Perumahan Tambun";
+                        } else if (preg_match('/PerumahaN\/A/i', $alamatValue)) {
+                            $alamat = "Perumahan Tambun";
+                        } else if (preg_match('/PerumahaB/i', $alamatValue)) {
+                            $alamat = "Perumahan Waringin";
+                        } else if (preg_match('/PerumahaA/i', $alamatValue)) {
+                            $alamat = "Perumahan Waringin";
                         } else {
-                            $alamat = str_replace("Perumaha", "Perumahan ", $row['alamat']);
+                            $alamat = str_replace("Perumaha", "Perumahan ", $alamatValue);
                         }
                     } else {
-                        $alamat = (string)$row['alamat'];
+                        $alamat = $alamatValue;
+                    }
+                    
+                    // Final safety check to ensure no "n" remains
+                    if (strpos($alamat, 'Perumahan n') !== false) {
+                        $alamat = str_replace('Perumahan n', 'Perumahan', $alamat);
                     }
                 }
                 
-                // Process other fields (keeping N/A when present)
+                // Process other fields
                 $blok = isset($row['blok']) ? (string)$row['blok'] : "N/A";
                 $unit = isset($row['unit']) ? (string)$row['unit'] : "N/A";
                 $email = isset($row['email']) ? (string)$row['email'] : "N/A";
                 $alamat2 = isset($row['alamat_2']) ? (string)$row['alamat_2'] : "";
+                
+                // For debugging
+                Log::debug('Processing address', [
+                    'original' => $row['alamat'] ?? 'none',
+                    'processed' => $alamat,
+                    'row_number' => $index + 1
+                ]);
                 
                 // Prepare data for insert
                 $dataToInsert[] = [
@@ -100,7 +117,7 @@ class PelangganImport implements ToCollection, WithHeadingRow, WithCustomCsvSett
                 
                 $successCount++;
                 
-                // Insert in batches of 100 records
+                // Insert in batches
                 if (count($dataToInsert) >= 100) {
                     DB::table('pelanggan')->insert($dataToInsert);
                     $dataToInsert = [];
@@ -120,10 +137,31 @@ class PelangganImport implements ToCollection, WithHeadingRow, WithCustomCsvSett
             DB::table('pelanggan')->insert($dataToInsert);
         }
         
+        // Fix any remaining "Perumahan n" issues in the newly imported data
+        $this->fixAddressesInDatabase();
+        
         Log::info('Import completed', [
             'total' => $rows->count(),
             'success' => $successCount,
             'failed' => $rows->count() - $successCount
         ]);
+    }
+    
+    /**
+     * Fix addresses in the database
+     */
+    private function fixAddressesInDatabase()
+    {
+        try {
+            // Multiple passes to ensure all variants are fixed
+            DB::statement("UPDATE pelanggan SET alamat = REPLACE(alamat, 'Perumahan n ', 'Perumahan ') WHERE alamat LIKE 'Perumahan n %'");
+            DB::statement("UPDATE pelanggan SET alamat = REPLACE(alamat, 'Perumahan n', 'Perumahan') WHERE alamat LIKE 'Perumahan n%'");
+            
+            Log::info('Fixed addresses in database');
+        } catch (\Exception $e) {
+            Log::error('Error fixing addresses', [
+                'error' => $e->getMessage()
+            ]);
+        }
     }
 }
