@@ -210,7 +210,7 @@ class PelangganResource extends Resource
                     ->tooltip(fn ($record) => $record->nama),
 
                 TextColumn::make('alamat')
-                    ->label('Alamat')
+                    ->label('Alamat 1')
                     ->formatStateUsing(function ($record) {
                         if ($record->alamat === 'Lainnya' && $record->alamat_custom) {
                             return $record->alamat_custom;
@@ -219,6 +219,11 @@ class PelangganResource extends Resource
                     })
                     ->limit(30)
                     ->tooltip(fn ($record) => $record->alamat === 'Lainnya' ? $record->alamat_custom : $record->alamat),
+
+                TextColumn::make('alamat_2')
+                    ->label('Alamat 2')
+                    ->limit(30)
+                    ->toggleable(),
 
                 TextColumn::make('blok')
                     ->label('Blok')
@@ -248,7 +253,7 @@ class PelangganResource extends Resource
                     ->sortable()
                     ->toggleable(isToggledHiddenByDefault: true),
             ])
-            ->defaultSort('created_at', 'desc')
+            ->defaultSort('created_at', 'asc')
             ->filters([
                 SelectFilter::make('alamat')
                     ->label('Filter Alamat')

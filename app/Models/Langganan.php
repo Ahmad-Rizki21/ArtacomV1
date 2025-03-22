@@ -67,12 +67,9 @@ class Langganan extends Model
         parent::boot();
 
         static::creating(function ($langganan) {
-            // Cek metode pembayaran
-            $metodePembayaran = request()->input('metode_pembayaran');
-
-            // Ambil data teknis terkait pelanggan
-            $dataTeknis = $langganan->pelanggan->dataTeknis;
-
+            // Ambil data teknis menggunakan pelanggan_id
+            $dataTeknis = DataTeknis::where('pelanggan_id', $langganan->pelanggan_id)->first();
+        
             if ($dataTeknis) {
                 // Salin data teknis ke dalam langganan
                 $langganan->profile_pppoe = $dataTeknis->profile_pppoe;
@@ -80,26 +77,29 @@ class Langganan extends Model
                 $langganan->olt = $dataTeknis->olt;
             }
             
-            if ($metodePembayaran === 'manual') {
-                // Gunakan harga manual
-                $manualHarga = request()->input('total_harga_layanan_x_pajak');
-                if ($manualHarga) {
-                    $langganan->total_harga_layanan_x_pajak = $manualHarga;
+            // Ambil informasi layanan berdasarkan id_brand jika tersedia
+            if ($langganan->id_brand) {
+                $hargaLayanan = HargaLayanan::find($langganan->id_brand);
+                if ($hargaLayanan) {
+                    // Tentukan layanan berdasarkan profile_pppoe
+                    if ($langganan->profile_pppoe) {
+                        // Ekstrak kecepatan dari profile_pppoe (misalnya "10Mbps-a" -> "10 Mbps")
+                        $matches = [];
+                        if (preg_match('/(\d+)Mbps/', $langganan->profile_pppoe, $matches)) {
+                            $langganan->layanan = $matches[1] . ' Mbps';
+                        }
+                    }
+                    
+                    // Hitung total harga setelah semua data tersedia
+                    $langganan->hitungTotalHarga();
                 }
-            } else {
-                // Hitung otomatis - pastikan hitung selalu dilakukan saat otomatis
-                $langganan->hitungTotalHarga();
-                
-                // Log nilai setelah perhitungan
-                Log::info('Total Harga Setelah Perhitungan di Model', [
-                    'total_harga' => $langganan->total_harga_layanan_x_pajak
-                ]);
             }
-
+            
+            // Atur tanggal jika belum diatur
             if (is_null($langganan->tgl_jatuh_tempo)) {
                 $langganan->setTanggalJatuhTempo();
             }
-
+        
             // Set status awal langganan ke Suspend
             $langganan->user_status = 'Suspend';
         });
@@ -120,15 +120,27 @@ class Langganan extends Model
         });
     }
 
-    public function hitungTotalHarga($isManual = false, $manualHarga = null)
+     public function hitungTotalHarga($isManual = false, $manualHarga = null)
     {
         if ($isManual && $manualHarga !== null) {
             $this->total_harga_layanan_x_pajak = $manualHarga;
             return $manualHarga;
         }
 
-        $hargaLayanan = HargaLayanan::where('id_brand', $this->id_brand)->first();
+        if (!$this->id_brand) {
+            return 0;
+        }
+
+        $hargaLayanan = HargaLayanan::find($this->id_brand);
         if ($hargaLayanan) {
+            // Jika layanan belum ditentukan, coba ekstrak dari profile_pppoe
+            if (!$this->layanan && $this->profile_pppoe) {
+                $matches = [];
+                if (preg_match('/(\d+)Mbps/', $this->profile_pppoe, $matches)) {
+                    $this->layanan = $matches[1] . ' Mbps';
+                }
+            }
+
             $harga = match ($this->layanan) {
                 '10 Mbps' => $hargaLayanan->harga_10mbps,
                 '20 Mbps' => $hargaLayanan->harga_20mbps,

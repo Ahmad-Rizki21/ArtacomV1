@@ -93,7 +93,7 @@ class DataTeknisResource extends Resource
                                             ->maxLength(50)
                                             ->helperText('Password untuk authentikasi PPPoE'),
 
-                                        Select::make('profile_pppoe')
+                                            Select::make('profile_pppoe')
                                             ->label('Profile PPPoE')
                                             ->options(function () {
                                                 $profiles = [];
@@ -102,7 +102,7 @@ class DataTeknisResource extends Resource
                                         
                                                 foreach ($speeds as $speed) {
                                                     foreach ($suffixes as $suffix) {
-                                                        $profiles[$speed . 'Mbps-' . $suffix] = $speed . ' Mbps-' . strtoupper($suffix);
+                                                        $profiles[$speed . 'Mbps-' . $suffix] = $speed . ' Mbps-' . $suffix;
                                                     }
                                                 }
                                         
@@ -285,7 +285,7 @@ class DataTeknisResource extends Resource
                     ->label('ODP')
                     ->toggleable(isToggledHiddenByDefault: true),
             ])
-            ->defaultSort('id', 'desc')
+            ->defaultSort('id', 'asc')
             ->filters([
                 SelectFilter::make('olt')
                     ->label('Filter OLT')

@@ -22,8 +22,9 @@ class JumlahPelangganPerAlamatChart extends ChartWidget
             'Rusun KM2',
             'Rusun Tipar Cakung',
             'Rusun Albo',
+            'Perumahan Tambun',
             'Perumahan Waringin',
-            'Perumahan Parama'
+            'Perumahan Parama',
         ];
 
         // Ambil data jumlah pelanggan per alamat
