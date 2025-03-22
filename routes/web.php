@@ -22,8 +22,8 @@ Route::get('/', function () {
 Route::get('invoices/{invoiceNumber}', [PaymentController::class, 'show'])->name('invoices.show');
 
 // Menampilkan form untuk membuat invoice atau halaman terkait
-Route::post('/invoice/create', [PaymentController::class, 'createInvoice'])
-    ->name('invoice.create');
+// Route::post('/invoice/create', [PaymentController::class, 'createInvoice'])
+//     ->name('invoice.create');
 
 
 
