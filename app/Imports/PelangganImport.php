@@ -49,13 +49,14 @@ class PelangganImport implements ToCollection, WithHeadingRow, WithCustomCsvSett
                 // Format phone numbers
                 $noTelp = "";
                 if (isset($row['no_telp'])) {
-                    if (is_numeric($row['no_telp'])) {
-                        $noTelp = sprintf("%.0f", (float)$row['no_telp']);
-                    } else {
-                        $noTelp = (string)$row['no_telp'];
-                    }
+                    // Hapus karakter non-digit
+                    $cleaned = preg_replace('/[^0-9]/', '', $row['no_telp']);
+                    
+                    // Pastikan diawali 0
+                    $noTelp = substr($cleaned, 0, 1) !== '0' 
+                        ? '0' . $cleaned 
+                        : $cleaned;
                 }
-                
                 // ALAMAT FIX - Check all possible patterns carefully
                 $alamat = "";
                 if (isset($row['alamat'])) {

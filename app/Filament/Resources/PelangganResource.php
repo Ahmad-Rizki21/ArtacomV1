@@ -65,15 +65,14 @@ class PelangganResource extends Resource
                                     ->helperText('Nama sesuai KTP')
                                     ->columnSpan(1),
 
-                                TextInput::make('no_telp')
+                                    TextInput::make('no_telp')
                                     ->label('No. Telepon')
                                     ->required()
                                     ->maxLength(15)
                                     ->tel()
                                     ->prefix('+62/08')
                                     ->placeholder('08xxxxxxxxxx')
-                                    ->helperText('Contoh: 0812345678')
-                                    ->columnSpan(1),
+                                    ->helperText('Contoh: 0812345678'),
 
                                 TextInput::make('email')
                                     ->label('Email')
