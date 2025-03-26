@@ -424,35 +424,27 @@ private function formatReferenceId(Invoice $invoice): string
         // Dapatkan kode lokasi dari alamat pelanggan
         $kodeLokasi = $this->getKodeLokasiFromPelanggan($invoice);
         
-        // Tambahkan timestamp unik sebagai 'cadangan' jika duplikat ditemukan
-        // Ini akan ditambahkan ke akhir ID hanya jika diperlukan dalam logika db
+        // Selalu tambahkan timestamp untuk memastikan keunikan
         $uniqueSuffix = time() . rand(100, 999);
         
-        // Format berdasarkan brand untuk match dengan gambar pertama
+        // Format berdasarkan brand
         switch ($brand) {
             case 'ajn-01': // Jakinet
-                $referenceId = "jakinet/ftth/{$bulan}/{$namaPelanggan}/{$kodeLokasi}";
+                $referenceId = "jakinet/ftth/{$bulan}/{$namaPelanggan}/{$kodeLokasi}-{$uniqueSuffix}";
                 break;
                 
             case 'ajn-02': // Jelantik
-                $referenceId = "jelantik/ftth/{$bulan}/{$namaPelanggan}/{$kodeLokasi}";
+                $referenceId = "jelantik/ftth/{$bulan}/{$namaPelanggan}/{$kodeLokasi}-{$uniqueSuffix}";
                 break;
                 
             case 'ajn-03': // Jelantik (Nagrak)
-                $referenceId = "jelantik/ftth/{$bulan}/{$namaPelanggan}/{$kodeLokasi}";
+                $referenceId = "jelantik/ftth/{$bulan}/{$namaPelanggan}/{$kodeLokasi}-{$uniqueSuffix}";
                 break;
                 
             default:
                 // Default ke invoice number dan timestamp
-                $referenceId = "{$invoice->invoice_number}";
+                $referenceId = "{$invoice->invoice_number}-{$uniqueSuffix}";
                 break;
-        }
-        
-        // Cek apakah ID sudah ada di database
-        $existingInvoice = Invoice::where('xendit_external_id', $referenceId)->first();
-        if ($existingInvoice && $existingInvoice->id !== $invoice->id) {
-            // Jika sudah ada dan bukan invoice ini, tambahkan suffix unik
-            return $referenceId . "-" . $uniqueSuffix;
         }
         
         return $referenceId;

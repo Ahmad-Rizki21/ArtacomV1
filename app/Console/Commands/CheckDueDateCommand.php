@@ -35,9 +35,9 @@ class CheckDueDateCommand extends Command
         $this->info('Current date: ' . $now->format('Y-m-d'));
         
         // Find active subscriptions past due date
-        $pastDueSubscriptions = Langganan::where('tgl_jatuh_tempo', '<', $now->format('Y-m-d'))
-            ->where('user_status', 'Aktif')
-            ->get();
+        $pastDueSubscriptions = Langganan::where('tgl_jatuh_tempo', '<=', $now->format('Y-m-d'))
+        ->where('user_status', 'Aktif')
+        ->get();
             
         $this->info('Found ' . $pastDueSubscriptions->count() . ' past due subscriptions');
         

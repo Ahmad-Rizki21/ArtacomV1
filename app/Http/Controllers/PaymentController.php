@@ -72,40 +72,94 @@ class PaymentController extends Controller
     }
 
     // Handle Xendit Webhook
-    public function handleWebhook(Request $request)
-    {
-        try {
-            // Ambil token dari header webhook Xendit
-            $webhookToken = $request->header('X-Callback-Token');
+    // PaymentController.php
+public function handleWebhook(Request $request)
+{
+    try {
+        // Log semua data yang diterima
+        Log::info('Webhook data received', [
+            'data' => $request->all()
+        ]);
 
-            // Log semua data yang diterima untuk keperluan debugging
-            Log::info('Xendit Webhook Received', [
-                'payload' => $request->all(),
-                'headers' => $request->headers->all(),
-                'token_received' => $webhookToken ? substr($webhookToken, 0, 5) . '***' : 'Missing'
-            ]);
-
-            // Proses webhook dengan menyertakan token untuk verifikasi
-            $data = $this->xenditService->processWebhook($request->all(), $webhookToken);
-            
-            // Jika status error, kembalikan respons sesuai dengan kode 400
-            if (isset($data['status']) && $data['status'] === 'error') {
-                Log::warning('Webhook processing returned error', [
-                    'error' => $data['message'] ?? 'Unknown error'
-                ]);
-                return response()->json($data, 400);
-            }
-            
-            return response()->json($data);
-            
-        } catch (\Exception $e) {
-            Log::error('Kesalahan memperbarui invoice dari webhook', [
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
-            ]);
-            return response()->json(['message' => 'Terjadi kesalahan memperbarui invoice'], 500);
+        // Validasi dasar - pastikan ada data yang diperlukan
+        $data = $request->all();
+        if (empty($data['external_id']) || empty($data['status'])) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Missing required data'
+            ], 400);
         }
+
+        // Cari invoice berdasarkan external_id
+        $invoice = Invoice::where('xendit_external_id', $data['external_id'])
+                        ->orWhere('invoice_number', $data['external_id'])
+                        ->first();
+
+        if (!$invoice) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Invoice tidak ditemukan'
+            ], 404);
+        }
+
+        // Update status invoice
+        $newStatus = [
+            'PENDING' => 'Menunggu Pembayaran',
+            'PAID' => 'Lunas',
+            'SETTLED' => 'Selesai',
+            'EXPIRED' => 'Kadaluarsa'
+        ][$data['status']] ?? 'Tidak Diketahui';
+
+        // Update invoice data
+        $invoice->status_invoice = $newStatus;
+        $invoice->xendit_id = $data['id'] ?? null;
+        $invoice->paid_amount = $data['paid_amount'] ?? null;
+        $invoice->paid_at = $data['paid_at'] ?? null;
+        $invoice->save();
+
+        // Jika invoice sudah dibayar, update langganan
+        if (in_array($newStatus, ['Lunas', 'Selesai'])) {
+            $this->updateLanggananAfterPayment($invoice);
+        }
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Invoice berhasil diperbarui'
+        ]);
+
+    } catch (\Exception $e) {
+        Log::error('Error processing webhook', [
+            'error' => $e->getMessage(),
+            'trace' => $e->getTraceAsString()
+        ]);
+
+        return response()->json([
+            'status' => 'error',
+            'message' => 'Server error'
+        ], 500);
     }
+}
+
+// Method helper untuk update langganan
+private function updateLanggananAfterPayment($invoice)
+{
+    $langganan = $invoice->langganan;
+    if (!$langganan) return;
+
+    // Format tanggal invoice
+    $tglInvoice = $invoice->tgl_invoice 
+        ? Carbon::parse($invoice->tgl_invoice)->format('Y-m-d')
+        : now()->format('Y-m-d');
+    
+    // Update tanggal invoice terakhir
+    $langganan->tgl_invoice_terakhir = $tglInvoice;
+    $langganan->save();
+    
+    // Update tanggal jatuh tempo dan status
+    if (method_exists($langganan, 'updateTanggalJatuhTempo')) {
+        $langganan->updateTanggalJatuhTempo($tglInvoice, $invoice->invoice_number);
+    }
+}
 
     public function handleXenditCallback(Request $request)
     {

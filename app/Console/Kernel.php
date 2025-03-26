@@ -27,26 +27,26 @@ class Kernel extends ConsoleKernel
         
         // Untuk development - jalankan setiap menit
         $schedule->command('invoice:generate-due --days=5')
-        ->everyMinute()
+        ->everyMinutes()
         ->appendOutputTo(storage_path('logs/invoice-scheduler.log'));
 
         $schedule->command('app:check-overdue-subscriptions')
-        ->everyMinute()       
+        ->everyMinutes()       
         //  ->daily()
         //  ->at('00:01')
                  ->appendOutputTo(storage_path('logs/subscription-checks.log'));
 
         $schedule->command('check:due-date')
-        ->everyMinute()
+        ->everyMinutes()
         ->appendOutputTo(storage_path('logs/due-date-check.log'));
 
         $schedule->command('app:sync-mikrotik-status')
-        ->everyMinute()
+        ->everyMinutes()
         ->appendOutputTo(storage_path('logs/mikrotik-sync.log'));
 
         $schedule->call(function () {
             Langganan::checkAllSubscriptionStatus();
-        })->everyMinute();
+        })->everyMinutes();
 
         $schedule->command('invoice:check-paid-status')->everyMinute();
 

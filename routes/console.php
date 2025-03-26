@@ -39,6 +39,7 @@ Artisan::command('inspire', function () {
 // Schedule::call(new GeneratorDueInvoices)->everyMinute();
 Schedule::command('invoice:generate-due')->everyMinute();
 Schedule::command('app:check-overdue-subscriptions')->everyMinute();
+
 Schedule::command('app:sync-mikrotik')->everyMinute();
 Schedule::command('invoice:check-paid-status')->everyMinute();
 
