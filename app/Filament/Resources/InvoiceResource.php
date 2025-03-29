@@ -70,18 +70,26 @@ class InvoiceResource extends Resource
                                     ->displayFormat('d M Y')
                                     ->closeOnDateSelection(),
                                 
-                                DatePicker::make('tgl_jatuh_tempo')
+                                    DatePicker::make('tgl_jatuh_tempo')
                                     ->label('Tanggal Jatuh Tempo')
                                     ->required()
                                     ->default(function (callable $get) {
+                                        // Coba ambil dari pelanggan_id
+                                        $pelangganId = $get('pelanggan_id');
+                                        if ($pelangganId) {
+                                            $langganan = Langganan::where('pelanggan_id', $pelangganId)->first();
+                                            if ($langganan && $langganan->tgl_jatuh_tempo) {
+                                                return Carbon::parse($langganan->tgl_jatuh_tempo);
+                                            }
+                                        }
+                                        
+                                        // Jika tidak ada, gunakan tanggal invoice
                                         $invoiceDate = $get('tgl_invoice') ?? now();
-                                        return Carbon::parse($invoiceDate)->addMonth();
+                                        return Carbon::parse($invoiceDate);
                                     })
-                                    ->minDate(fn ($get) => $get('tgl_invoice') ?? now())
-                                    ->after('tgl_invoice')
                                     ->displayFormat('d M Y')
                                     ->closeOnDateSelection()
-                                    ->helperText('Otomatis 1 bulan setelah tanggal invoice'),
+                                    ->helperText('Default menggunakan tanggal jatuh tempo dari langganan'),
                             ]),
                     ]),
                 
@@ -230,9 +238,12 @@ class InvoiceResource extends Resource
             $invoiceDate = now();
             $set('tgl_invoice', $invoiceDate);
 
-            // Set tanggal jatuh tempo 1 bulan dari tanggal invoice
-            $tglJatuhTempo = Carbon::parse($invoiceDate)->addMonth();
-            $set('tgl_jatuh_tempo', $tglJatuhTempo);
+            // Set tanggal jatuh tempo dari langganan jika ada, jika tidak gunakan tanggal invoice
+            if ($langganan->tgl_jatuh_tempo) {
+                $set('tgl_jatuh_tempo', Carbon::parse($langganan->tgl_jatuh_tempo));
+            } else {
+                $set('tgl_jatuh_tempo', $invoiceDate);
+            }
         } catch (\Exception $e) {
             Log::error('Error updating invoice data', [
                 'pelanggan_id' => $pelangganId,

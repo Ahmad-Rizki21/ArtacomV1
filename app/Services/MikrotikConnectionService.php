@@ -68,6 +68,13 @@ class MikrotikConnectionService
         }
 
         try {
+            // Log detail profile yang akan diupdate
+            Log::info('Attempting to update PPPoE profile', [
+                'secretName' => $secretName,
+                'newProfile' => $newProfile,
+                'isSuspended' => strtoupper($newProfile) === 'SUSPENDED'
+            ]);
+            
             // Cari ID secret berdasarkan name
             $query = new Query('/ppp/secret/print');
             $query->where('name', $secretName);
@@ -86,18 +93,29 @@ class MikrotikConnectionService
             }
 
             $secretId = $response[0]['.id'];
+            $currentProfile = $response[0]['profile'] ?? 'unknown';
             $currentDisabled = isset($response[0]['disabled']) && $response[0]['disabled'] === 'true';
+            
+            Log::info('Current PPPoE status before update', [
+                'secretName' => $secretName,
+                'currentProfile' => $currentProfile,
+                'isCurrentlyDisabled' => $currentDisabled,
+                'newProfile' => $newProfile
+            ]);
             
             // Update profile PPPoE
             $updateQuery = new Query('/ppp/secret/set');
             $updateQuery->equal('.id', $secretId);
             $updateQuery->equal('profile', $newProfile);
             
-            // Set disabled=no secara eksplisit jika bukan profile 'suspended'
-            if ($newProfile !== 'suspended') {
-                $updateQuery->equal('disabled', 'no');
-            } else {
+            // Check if we're suspending or activating
+            $isSuspended = strtoupper($newProfile) === 'SUSPENDED';
+            
+            // Set disabled status based on profile
+            if ($isSuspended) {
                 $updateQuery->equal('disabled', 'yes');
+            } else {
+                $updateQuery->equal('disabled', 'no');
             }
             
             $updateResponse = $client->query($updateQuery)->read();
@@ -105,7 +123,7 @@ class MikrotikConnectionService
             Log::info('Update PPPoE Profile Response', [
                 'secretName' => $secretName,
                 'newProfile' => $newProfile,
-                'disabled' => ($newProfile === 'suspended') ? 'yes' : 'no',
+                'disabled' => $isSuspended ? 'yes' : 'no',
                 'response' => $updateResponse
             ]);
             
@@ -122,7 +140,8 @@ class MikrotikConnectionService
                     'secretName' => $secretName,
                     'profile_updated' => $newProfileSet,
                     'is_disabled' => $newDisabled,
-                    'expected_disabled' => ($newProfile === 'suspended')
+                    'expected_disabled' => $isSuspended,
+                    'current_profile' => $verifyResponse[0]['profile'] ?? 'unknown'
                 ]);
             }
 
@@ -138,7 +157,7 @@ class MikrotikConnectionService
     }
     
     /**
-     * Nonaktifkan PPPoE Secret - sekarang menggunakan set disabled=yes
+     * Nonaktifkan PPPoE Secret dengan mengubah profile ke SUSPENDED dan set disabled=yes
      * 
      * @param string $secretName
      * @return bool
@@ -165,16 +184,23 @@ class MikrotikConnectionService
             }
             
             $secretId = $response[0]['.id'];
+            $currentProfile = $response[0]['profile'] ?? 'unknown';
             
-            // Set disabled=yes
+            Log::info('Disabling PPPoE Secret', [
+                'secretName' => $secretName,
+                'currentProfile' => $currentProfile
+            ]);
+            
+            // Set disabled=yes dan ubah profile ke SUSPENDED
             $updateQuery = new Query('/ppp/secret/set');
             $updateQuery->equal('.id', $secretId);
             $updateQuery->equal('disabled', 'yes');
+            $updateQuery->equal('profile', 'SUSPENDED');
             $response = $client->query($updateQuery)->read();
             
             Log::info('Disable PPPoE Secret response', [
                 'secretName' => $secretName,
-                'method' => 'set disabled=yes',
+                'method' => 'set disabled=yes and profile=SUSPENDED',
                 'response' => $response
             ]);
             
@@ -188,12 +214,13 @@ class MikrotikConnectionService
     }
 
     /**
-     * Aktifkan PPPoE Secret - sekarang menggunakan set disabled=no
+     * Aktifkan PPPoE Secret dengan mengubah profile sesuai parameter dan set disabled=no
      * 
      * @param string $secretName
+     * @param string|null $originalProfile Profile yang akan digunakan, jika null akan menggunakan profile existing
      * @return bool
      */
-    public function enablePppoeSecret(string $secretName)
+    public function enablePppoeSecret(string $secretName, string $originalProfile = null)
     {
         $client = $this->connect();
 
@@ -215,18 +242,53 @@ class MikrotikConnectionService
             }
             
             $secretId = $response[0]['.id'];
+            $currentProfile = $response[0]['profile'] ?? 'unknown';
             
-            // Set disabled=no
+            Log::info('Enabling PPPoE Secret', [
+                'secretName' => $secretName,
+                'currentProfile' => $currentProfile,
+                'originalProfile' => $originalProfile
+            ]);
+            
+            // Set disabled=no dan update profile jika disediakan
             $updateQuery = new Query('/ppp/secret/set');
             $updateQuery->equal('.id', $secretId);
             $updateQuery->equal('disabled', 'no');
+            
+            // Jika original profile diberikan dan current profile adalah SUSPENDED, kembalikan ke profile asli
+            if ($originalProfile && strtoupper($currentProfile) === 'SUSPENDED') {
+                $updateQuery->equal('profile', $originalProfile);
+                Log::info('Restoring original profile', [
+                    'secretName' => $secretName,
+                    'fromProfile' => $currentProfile,
+                    'toProfile' => $originalProfile
+                ]);
+            }
+            
             $response = $client->query($updateQuery)->read();
             
             Log::info('Enable PPPoE Secret response', [
                 'secretName' => $secretName,
-                'method' => 'set disabled=no',
+                'method' => 'set disabled=no' . ($originalProfile ? ' and restore profile' : ''),
                 'response' => $response
             ]);
+            
+            // Verifikasi hasil
+            $verifyQuery = new Query('/ppp/secret/print');
+            $verifyQuery->where('name', $secretName);
+            $verifyResponse = $client->query($verifyQuery)->read();
+            
+            if (!empty($verifyResponse)) {
+                $newDisabled = isset($verifyResponse[0]['disabled']) && $verifyResponse[0]['disabled'] === 'true';
+                $currentProfile = $verifyResponse[0]['profile'] ?? 'unknown';
+                
+                Log::info('Verification after enable', [
+                    'secretName' => $secretName,
+                    'current_profile' => $currentProfile,
+                    'is_disabled' => $newDisabled,
+                    'expected_disabled' => false
+                ]);
+            }
             
             return true;
         } catch (\Exception $e) {

@@ -353,13 +353,13 @@ class Invoice extends Model
     protected static function boot()
     {
         parent::boot();
-        
+    
         static::creating(function ($invoice) {
             Log::info('Creating Invoice: ', $invoice->toArray());
-    
+
             // Generate Nomor Invoice secara otomatis
             $invoice->invoice_number = 'INV-' . now()->format('Ymd') . '-' . rand(1000, 9999);
-    
+
             // Ambil ID Pelanggan dan data lainnya...
             $dataTeknis = DataTeknis::where('pelanggan_id', $invoice->pelanggan_id)->first();
             if ($dataTeknis) {
@@ -367,16 +367,24 @@ class Invoice extends Model
             } else {
                 throw new \Exception('ID Pelanggan tidak ditemukan di Data Teknis.');
             }
-    
-            // Ambil `brand` dari `langganan`
+
+            // Ambil `brand` dan tanggal jatuh tempo dari `langganan`
             $langganan = Langganan::where('pelanggan_id', $invoice->pelanggan_id)->first();
             if ($langganan) {
                 $invoice->brand = $langganan->id_brand;
                 $invoice->total_harga = $langganan->total_harga_layanan_x_pajak;
+                
+                // Gunakan tanggal jatuh tempo dari langganan jika tidak ada tanggal jatuh tempo yang diberikan
+                if (!$invoice->tgl_jatuh_tempo && $langganan->tgl_jatuh_tempo) {
+                    $invoice->tgl_jatuh_tempo = $langganan->tgl_jatuh_tempo;
+                } elseif (!$invoice->tgl_jatuh_tempo) {
+                    // Jika tidak ada tanggal jatuh tempo di langganan, gunakan tanggal invoice
+                    $invoice->tgl_jatuh_tempo = $invoice->tgl_invoice;
+                }
             } else {
                 throw new \Exception('Brand tidak ditemukan untuk pelanggan ini.');
             }
-    
+
             // Ambil `no_telp` dan `email` dari `pelanggan`
             $pelanggan = Pelanggan::find($invoice->pelanggan_id);
             if ($pelanggan) {
@@ -385,15 +393,22 @@ class Invoice extends Model
             } else {
                 throw new \Exception('Nomor Telepon atau Email tidak ditemukan untuk pelanggan ini.');
             }
-    
+
             // Set status awal
             $invoice->status_invoice = 'Menunggu Pembayaran';
+        
 
             // Tambahkan logika untuk menetapkan tanggal jatuh tempo
+            // if (!$invoice->tgl_jatuh_tempo) {
+            //     // Jika tidak ada tanggal jatuh tempo, set 1 bulan dari tanggal invoice
+            //     $invoice->tgl_jatuh_tempo = Carbon::parse($invoice->tgl_invoice)->addMonth();
+            // }
             if (!$invoice->tgl_jatuh_tempo) {
-                // Jika tidak ada tanggal jatuh tempo, set 1 bulan dari tanggal invoice
-                $invoice->tgl_jatuh_tempo = Carbon::parse($invoice->tgl_invoice)->addMonth();
+                // Jika tidak ada tanggal jatuh tempo, set pada hari yang sama pukul 23:59:59
+                $invoice->tgl_jatuh_tempo = Carbon::parse($invoice->tgl_invoice)->endOfDay();
             }
+
+
         });
     
         static::created(function ($invoice) {

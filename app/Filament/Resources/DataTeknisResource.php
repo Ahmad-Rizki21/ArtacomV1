@@ -214,6 +214,12 @@ class DataTeknisResource extends Resource
     {
         return $table
             ->columns([
+                TextColumn::make('id')
+                    ->label('No.')
+                    ->sortable()
+                    ->searchable()
+                    ->toggleable(),
+
                 TextColumn::make('pelanggan.nama')
                     ->label('Pelanggan')
                     ->sortable()
