@@ -21,8 +21,11 @@
         "laravel/octane": "^2.8",
         "laravel/tinker": "^2.9",
         "maatwebsite/excel": "^3.1",
+        "nuxtifyts/dash-stack-theme": "^1.2",
         "pxlrbt/filament-excel": "^2.4",
         "rmsramos/activitylog": "^1.0",
+        "shuvroroy/filament-spatie-laravel-health": "^2.3",
+        "spatie/cpu-load-health-check": "^1.0",
         "xendit/xendit-php": "^6.2",
         "z3d0x/filament-logger": "^0.8.0"
     },

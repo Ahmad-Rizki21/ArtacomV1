@@ -20,6 +20,9 @@ use Illuminate\Session\Middleware\StartSession;
 use Illuminate\View\Middleware\ShareErrorsFromSession;
 use App\Filament\Pages\EditProfilePage; // Tambahkan ini untuk edit profil
 use Devonab\FilamentEasyFooter\EasyFooterPlugin;
+use Nuxtifyts\DashStackTheme\DashStackThemePlugin;
+use ShuvroRoy\FilamentSpatieLaravelHealth\FilamentSpatieLaravelHealthPlugin;
+
 // use DiogoGPinto\AuthUIEnhancer\AuthUIEnhancerPlugin;
 // use Icetalker\FilamentTableRepeater\Forms\Components\TableRepeater;
 
@@ -30,10 +33,12 @@ class AdminPanelProvider extends PanelProvider
     public function panel(Panel $panel): Panel
     {
         return $panel
+        
             ->default()
             ->id('admin')
             ->path('admin')
             ->databaseNotifications()
+            ->databaseNotificationsPolling('30s') // Opsional: Atur polling time
             ->userMenuItems([
                 'profile' => MenuItem::make()
                     ->label(fn () => Auth::user()->name)
@@ -53,11 +58,18 @@ class AdminPanelProvider extends PanelProvider
             ->spa()
             ->sidebarCollapsibleOnDesktop()
             ->sidebarFullyCollapsibleOnDesktop()
-            ->sidebarWidth('15rem')
-            ->favicon(asset('images/resized-image.png'))
-            
+            ->sidebarWidth('15rem')            
             // ->brandLogo(asset('images/jelantik.jpeg'))
-            ->brandName('Artacom Billing System')
+            // ->brandLogo(asset('images/jelantik.jpeg'))
+            // ->brandLogoHeight('9rem')
+            // ->brandName('Billing')
+
+            ->brandLogo(fn () => view('filament.admin.logo'))
+            
+            
+            // ->brandLogo(fn () => view('filament.admin.dashboard'))
+            ->favicon(asset('images/jelantik.jpeg'))
+           
             ->font('Poppins')
             ->colors([
                 'danger' => Color::Rose,
@@ -112,13 +124,15 @@ class AdminPanelProvider extends PanelProvider
                     ['title' => 'Dev', 'url' => 'https://www.instagram.com/amad.dyk/'],
                 ])
                 ->withLoadTime('This page loaded in'),
+                DashStackThemePlugin::make(),
+                (FilamentSpatieLaravelHealthPlugin::make()),
 
                
                 
                 
 
-            ])
-            ->databaseNotifications();
+                ]);
+            
     }
 
     

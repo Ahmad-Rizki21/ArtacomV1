@@ -82,3 +82,16 @@ Route::get('langganan/import', [LanggananController::class, 'showImportForm'])
 ->name('langganan.import.form');
 Route::post('langganan/import', [LanggananController::class, 'import'])
 ->name('langganan.import');
+
+
+Route::get('/test-notification', function() {
+    $invoice = \App\Models\Invoice::first();
+    $user = \App\Models\User::first();
+    
+    if ($invoice && $user) {
+        $user->notify(new \App\Notifications\XenditPaymentNotification($invoice));
+        return "Notifikasi berhasil dikirim ke user ID: " . $user->id;
+    }
+    
+    return "Tidak ada invoice atau user ditemukan";
+})->middleware(['auth']);

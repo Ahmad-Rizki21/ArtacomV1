@@ -131,7 +131,8 @@ class LanggananImport implements ToModel, WithHeadingRow, WithValidation
             'pelanggan_id' => 'required|exists:pelanggan,id',
             'id_brand' => 'required|exists:harga_layanan,id_brand',
             'layanan' => 'required',
-            'tgl_jatuh_tempo' => 'required|date',
+            // Hapus validasi date karena kita akan handle manual di transformDate
+            'tgl_jatuh_tempo' => 'nullable|date', 
             // Hapus validasi terlalu ketat untuk status dan metode pembayaran
         ];
     }
@@ -166,11 +167,39 @@ class LanggananImport implements ToModel, WithHeadingRow, WithValidation
     public function transformDate($value)
     {
         try {
+            // Coba parse dengan beberapa format umum
+            foreach(['m/d/Y', 'd/m/Y', 'm-d-Y', 'd-m-Y', 'Y-m-d'] as $format) {
+                try {
+                    return Carbon::createFromFormat($format, $value);
+                } catch (\Exception $e) {
+                    continue;
+                }
+            }
+            
+            // Coba parse secara umum
             return Carbon::parse($value);
         } catch (\Exception $e) {
             Log::warning('Format tanggal tidak valid, menggunakan tanggal sekarang', ['value' => $value]);
             return now();
         }
+    }
+
+    public function withValidator($validator)
+    {
+        $validator->after(function ($validator) {
+            foreach ($validator->getData() as $rowIndex => $row) {
+                if (isset($row['tgl_jatuh_tempo'])) {
+                    try {
+                        // Coba parse tanggal untuk memastikan valid
+                        Carbon::parse($row['tgl_jatuh_tempo']);
+                    } catch (\Exception $e) {
+                        // Jika parse gagal, tambahkan error
+                        $validator->errors()->add($rowIndex . '.tgl_jatuh_tempo', 
+                            'Format tanggal tidak valid. Gunakan format yang bisa dikenali Carbon.');
+                    }
+                }
+            }
+        });
     }
     
     /**

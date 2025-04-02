@@ -327,7 +327,7 @@ class LanggananResource extends Resource
             ->bulkActions([
                 DeleteBulkAction::make()
             ])
-            ->defaultSort('created_at', 'desc');
+            ->defaultSort('id', 'asc');
     }
 
     /**

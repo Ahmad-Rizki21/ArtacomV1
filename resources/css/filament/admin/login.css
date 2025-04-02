@@ -1,0 +1,23 @@
+.fi-simple-layout {
+    background: linear-gradient(135deg, #4f46e5 0%, #3b82f6 100%);
+}
+
+.fi-simple-main {
+    @apply max-w-md;
+}
+
+.fi-simple-card {
+    @apply rounded-2xl shadow-login-card border-0;
+}
+
+.fi-input-wrapper {
+    @apply rounded-xl;
+}
+
+.fi-btn {
+    @apply rounded-xl;
+}
+
+.fi-btn-gradient {
+    background: linear-gradient(135deg, #4f46e5 0%, #3b82f6 100%);
+}

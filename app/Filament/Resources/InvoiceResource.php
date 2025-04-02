@@ -501,10 +501,67 @@ class InvoiceResource extends Resource
 
     public static function getPages(): array
     {
+
         return [
             'index' => InvoiceResource\Pages\ListInvoices::route('/'),
             'create' => InvoiceResource\Pages\CreateInvoice::route('/create'),
             'edit' => InvoiceResource\Pages\EditInvoice::route('/{record}/edit'),
         ];
+    }
+
+    
+/**
+ * Get the badge to display in the navigation.
+ * 
+ * @return string|null
+ */
+public static function getNavigationBadge(): ?string
+{
+    // Menghitung jumlah invoice yang statusnya "Menunggu Pembayaran"
+    return static::getModel()::where('status_invoice', 'Menunggu Pembayaran')->count();
+}
+
+    /**
+     * Get the color of the badge to display in the navigation.
+     * 
+     * @return string|null
+     */
+    public static function getNavigationBadgeColor(): ?string
+    {
+        // Hitung jumlah invoice yang menunggu pembayaran
+        $pendingCount = static::getModel()::where('status_invoice', 'Menunggu Pembayaran')->count();
+        
+        // Logika warna berdasarkan jumlah invoice
+        if ($pendingCount === 0) {
+            return 'success'; // Hijau jika tidak ada invoice menunggu
+        } elseif ($pendingCount < 5) {
+            return 'warning'; // Kuning jika jumlah invoice < 5
+        } elseif ($pendingCount < 10) {
+            return 'danger'; // Merah jika jumlah invoice 5-9
+        } else {
+            return 'primary'; // Biru jika jumlah invoice >= 10
+        }
+    }
+
+    /**
+     * Get the tooltip for the badge in the navigation.
+     * 
+     * @return string|null
+     */
+    public static function getNavigationBadgeTooltip(): ?string
+    {
+        // Hitung invoice menunggu pembayaran dan yang sudah jatuh tempo
+        $pendingCount = static::getModel()::where('status_invoice', 'Menunggu Pembayaran')->count();
+        $overdueCount = static::getModel()::where('status_invoice', 'Menunggu Pembayaran')
+            ->where('tgl_jatuh_tempo', '<', now())
+            ->count();
+        
+        if ($pendingCount === 0) {
+            return 'Tidak ada invoice yang menunggu pembayaran';
+        } elseif ($overdueCount > 0) {
+            return "{$pendingCount} invoice menunggu pembayaran, {$overdueCount} sudah jatuh tempo";
+        } else {
+            return "{$pendingCount} invoice menunggu pembayaran";
+        }
     }
 }

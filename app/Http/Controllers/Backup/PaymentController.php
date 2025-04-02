@@ -116,7 +116,6 @@ public function handleWebhook(Request $request)
         $invoice->paid_amount = $data['paid_amount'] ?? null;
         $invoice->paid_at = $data['paid_at'] ?? null;
         $invoice->save();
-        
 
         // Jika invoice sudah dibayar, update langganan
         if (in_array($newStatus, ['Lunas', 'Selesai'])) {

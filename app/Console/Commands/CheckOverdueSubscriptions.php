@@ -39,41 +39,60 @@ class CheckOverdueSubscriptions extends Command
      */
     public function handle()
     {
+        
         $this->info('Starting overdue subscription check...');
         
         $now = Carbon::now();
         $this->info('Current date: ' . $now->format('Y-m-d'));
         
-        // Find active subscriptions past due date
+        // 1. Langganan yang sudah melewati tanggal jatuh tempo
         $pastDueSubscriptions = Langganan::where('tgl_jatuh_tempo', '<', $now->format('Y-m-d'))
             ->where('user_status', 'Aktif')
             ->get();
-            
-        $this->info('Found ' . $pastDueSubscriptions->count() . ' overdue subscriptions');
         
-        if ($pastDueSubscriptions->count() == 0) {
-            $this->info('No overdue subscriptions found. Exiting.');
+        // 2. Langganan yang akan jatuh tempo dalam 5 hari dan memiliki invoice yang belum dibayar
+        $upcomingDueSubscriptions = Langganan::where('tgl_jatuh_tempo', '<=', $now->copy()->addDays(5)->format('Y-m-d'))
+            ->where('tgl_jatuh_tempo', '>', $now->format('Y-m-d'))
+            ->where('user_status', 'Aktif')
+            ->whereHas('invoices', function($query) {
+                $query->where('status_invoice', 'Menunggu Pembayaran');
+            })
+            ->get();
+        
+        $this->info('Found ' . $pastDueSubscriptions->count() . ' past due subscriptions');
+        $this->info('Found ' . $upcomingDueSubscriptions->count() . ' upcoming due subscriptions with unpaid invoices');
+        
+        // Gabungkan kedua koleksi
+        $allSubscriptionsToSuspend = $pastDueSubscriptions->merge($upcomingDueSubscriptions);
+        
+        // Periksa total langganan yang perlu di-suspend
+        if ($allSubscriptionsToSuspend->isEmpty()) {
+            $this->info('No subscriptions to suspend found. Exiting.');
             return 0;
         }
         
+        $this->info('Total ' . $allSubscriptionsToSuspend->count() . ' subscriptions will be suspended...');
+        
+        // Lanjutkan dengan proses suspend...
         $mikrotikService = new MikrotikConnectionService();
         $successCount = 0;
         
-        foreach ($pastDueSubscriptions as $langganan) {
+        foreach ($allSubscriptionsToSuspend as $langganan) {
             $this->info('Processing subscription ID: ' . $langganan->id . ' for pelanggan ID: ' . $langganan->pelanggan_id);
             
             // Simpan status lama untuk log
             $oldStatus = $langganan->user_status;
             
-            // Update status in database
+            // Update status di database
             $langganan->user_status = 'Suspend';
             $langganan->save();
             
-            // Update in Mikrotik jika ID Pelanggan tersedia
+            // Update di Mikrotik jika ID Pelanggan tersedia
             if (!empty($langganan->id_pelanggan)) {
                 try {
-                    // Update profile di Mikrotik ke suspended (lowercase sesuai standar tim IT)
-                    $result = $mikrotikService->updatePppoeProfile($langganan->id_pelanggan, 'suspended');
+                    // PERHATIKAN: Pastikan parameter yang dikirim ke Mikrotik benar
+                    // "suspended" (lowercase) atau "SUSPENDED" (uppercase) sesuai dengan konfigurasi Mikrotik Anda
+                    $result = $mikrotikService->updatePppoeProfile($langganan->id_pelanggan, 'SUSPENDED');
                     
                     if ($result) {
                         $successCount++;
@@ -93,7 +112,7 @@ class CheckOverdueSubscriptions extends Command
             }
         }
         
-        $this->info('Suspension process complete. Success: ' . $successCount . ' / ' . $pastDueSubscriptions->count());
+        $this->info('Suspension process complete. Success: ' . $successCount . ' / ' . $allSubscriptionsToSuspend->count());
         
         return 0;
     }
