@@ -22,6 +22,10 @@ use App\Filament\Pages\EditProfilePage; // Tambahkan ini untuk edit profil
 use Devonab\FilamentEasyFooter\EasyFooterPlugin;
 use Nuxtifyts\DashStackTheme\DashStackThemePlugin;
 use ShuvroRoy\FilamentSpatieLaravelHealth\FilamentSpatieLaravelHealthPlugin;
+use pxlrbt\FilamentEnvironmentIndicator\EnvironmentIndicatorPlugin;
+use \Croustibat\FilamentJobsMonitor\FilamentJobsMonitorPlugin;
+use Saade\FilamentLaravelLog\FilamentLaravelLogPlugin;
+
 
 // use DiogoGPinto\AuthUIEnhancer\AuthUIEnhancerPlugin;
 // use Icetalker\FilamentTableRepeater\Forms\Components\TableRepeater;
@@ -126,8 +130,9 @@ class AdminPanelProvider extends PanelProvider
                 ->withLoadTime('This page loaded in'),
                 DashStackThemePlugin::make(),
                 (FilamentSpatieLaravelHealthPlugin::make()),
+                EnvironmentIndicatorPlugin::make(),
+                (\TomatoPHP\FilamentArtisan\FilamentArtisanPlugin::make())
 
-               
                 
                 
 

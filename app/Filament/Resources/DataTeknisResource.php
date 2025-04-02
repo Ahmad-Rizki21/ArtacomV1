@@ -25,6 +25,10 @@ use Filament\Tables\Actions\ActionGroup;
 use Filament\Forms\Components\Placeholder;
 use Filament\Forms\Components\Tabs;
 use Illuminate\Support\HtmlString;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+
+use Filament\Notifications\Notification;
 
 class DataTeknisResource extends Resource
 {
@@ -34,7 +38,7 @@ class DataTeknisResource extends Resource
     protected static ?string $navigationIcon = 'heroicon-o-server';
     protected static ?string $navigationGroup = 'FTTH';
     protected static ?string $recordTitleAttribute = 'id_pelanggan';
-    protected static ?int $navigationSort = 2;
+    protected static ?int $navigationSort = 1;
 
     public static function form(Forms\Form $form): Forms\Form
     {
@@ -240,13 +244,13 @@ class DataTeknisResource extends Resource
                     ->copyable()
                     ->toggleable(),
 
-                TextColumn::make('ip_pelanggan')
+                    Tables\Columns\TextColumn::make('ip_pelanggan')
                     ->label('IP Pelanggan')
                     ->sortable()
                     ->searchable()
-                    ->copyable()
-                    ->toggleable(),
-
+                    ->copyable(),
+                    
+                
                 TextColumn::make('profile_pppoe')
                     ->label('Profile PPPoE')
                     ->sortable()
@@ -329,6 +333,85 @@ class DataTeknisResource extends Resource
                     ->indicator('Paket'),
             ])
             ->actions([
+
+                Tables\Actions\Action::make('aksesModem')
+    ->label('Akses Modem')
+    ->icon('heroicon-o-computer-desktop')
+    ->color(function (DataTeknis $record) {
+        // Cek status tersuspend
+        if ($record->pelanggan) {
+            $userStatus = DB::table('langganan')
+                ->where('pelanggan_id', $record->pelanggan->id)
+                ->value('user_status');
+            
+            if ($userStatus === 'Suspend') {
+                return 'danger'; // Merah untuk suspended
+            }
+        }
+        
+        return 'success'; // Hijau untuk normal
+    })
+    ->url(function (DataTeknis $record) {
+        // Cek status
+        if ($record->pelanggan) {
+            $userStatus = DB::table('langganan')
+                ->where('pelanggan_id', $record->pelanggan->id)
+                ->value('user_status');
+            
+            if ($userStatus === 'Suspend') {
+                // Untuk user suspended, kembali tanpa URL
+                // Ini akan menyebabkan tombol tidak melakukan navigasi
+                return null;
+            }
+        }
+        
+        // URL modem untuk user normal
+        return "http://{$record->ip_pelanggan}";
+    })
+    ->openUrlInNewTab()
+    ->requiresConfirmation()
+    ->modalHeading(function (DataTeknis $record) {
+        if ($record->pelanggan) {
+            $userStatus = DB::table('langganan')
+                ->where('pelanggan_id', $record->pelanggan->id)
+                ->value('user_status');
+            
+            if ($userStatus === 'Suspend') {
+                return 'Akses Ditolak';
+            }
+        }
+        
+        return 'Konfirmasi Akses Modem';
+    })
+    ->modalDescription(function (DataTeknis $record) {
+        if ($record->pelanggan) {
+            $userStatus = DB::table('langganan')
+                ->where('pelanggan_id', $record->pelanggan->id)
+                ->value('user_status');
+            
+            if ($userStatus === 'Suspend') {
+                return 'Peringatan: User ini sedang dalam masa suspended maka anda tidak bisa masuk kedalam konfigurasi modem';
+            }
+        }
+        
+        return "Anda akan mengakses modem dengan IP: {$record->ip_pelanggan}";
+    })
+    ->modalSubmitActionLabel(function (DataTeknis $record) {
+        if ($record->pelanggan) {
+            $userStatus = DB::table('langganan')
+                ->where('pelanggan_id', $record->pelanggan->id)
+                ->value('user_status');
+            
+            if ($userStatus === 'Suspend') {
+                return 'Kembali';
+            }
+        }
+        
+        return 'Lanjutkan';
+    })
+    ->modalCancelActionLabel('Batal'),
+
+
                 ActionGroup::make([
                     ViewAction::make(),
                     EditAction::make(),

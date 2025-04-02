@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "558017283aa67a13b866d8b96e15538a",
+    "content-hash": "afc1ab4bd1d6227e88ecde8348553b39",
     "packages": [
         {
             "name": "anourvalar/eloquent-serialize",
@@ -71,6 +71,65 @@
                 "source": "https://github.com/AnourValar/eloquent-serialize/tree/1.2.28"
             },
             "time": "2025-01-27T15:13:13+00:00"
+        },
+        {
+            "name": "awcodes/filament-gravatar",
+            "version": "v2.0.2",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/awcodes/filament-gravatar.git",
+                "reference": "6a6574d6b0c9b76cf2e4961c9858e1de1f266743"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/awcodes/filament-gravatar/zipball/6a6574d6b0c9b76cf2e4961c9858e1de1f266743",
+                "reference": "6a6574d6b0c9b76cf2e4961c9858e1de1f266743",
+                "shasum": ""
+            },
+            "require": {
+                "filament/filament": "^3.0",
+                "php": "^8.1",
+                "spatie/laravel-package-tools": "^1.15"
+            },
+            "require-dev": {
+                "laravel/pint": "^1.0"
+            },
+            "type": "package",
+            "extra": {
+                "laravel": {
+                    "providers": [
+                        "Awcodes\\FilamentGravatar\\GravatarServiceProvider"
+                    ]
+                }
+            },
+            "autoload": {
+                "psr-4": {
+                    "Awcodes\\FilamentGravatar\\": "src/"
+                }
+            },
+            "notification-url": "https://packagist.org/downloads/",
+            "license": [
+                "MIT"
+            ],
+            "authors": [
+                {
+                    "name": "Adam Weston",
+                    "email": "awcodes1@gmail.com",
+                    "role": "Developer"
+                }
+            ],
+            "description": "Replace Filament's default avatar url provider with one for Gravatar.",
+            "keywords": [
+                "filament",
+                "framework",
+                "gravatar",
+                "laravel"
+            ],
+            "support": {
+                "issues": "https://github.com/awcodes/filament-gravatar/issues",
+                "source": "https://github.com/awcodes/filament-gravatar/tree/v2.0.2"
+            },
+            "time": "2025-01-14T14:47:35+00:00"
         },
         {
             "name": "bezhansalleh/filament-shield",
@@ -369,6 +428,58 @@
             "time": "2023-11-29T23:19:16+00:00"
         },
         {
+            "name": "calebporzio/sushi",
+            "version": "v2.4.5",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/calebporzio/sushi.git",
+                "reference": "932d09781bff75c812541d2d269400fd7d730bab"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/calebporzio/sushi/zipball/932d09781bff75c812541d2d269400fd7d730bab",
+                "reference": "932d09781bff75c812541d2d269400fd7d730bab",
+                "shasum": ""
+            },
+            "require": {
+                "illuminate/database": "^5.8 || ^6.0 || ^7.0 || ^8.0 || ^9.0 || ^10.0 || ^11.0",
+                "illuminate/support": "^5.8 || ^6.0 || ^7.0 || ^8.0 || ^9.0 || ^10.0 || ^11.0",
+                "php": "^7.1.3|^8.0"
+            },
+            "require-dev": {
+                "doctrine/dbal": "^2.9 || ^3.1.4",
+                "orchestra/testbench": "3.8.* || 3.9.* || ^4.0 || ^6.0 || ^7.0 || ^8.0 || ^9.0",
+                "phpunit/phpunit": "^7.5 || ^8.4 || ^9.0 || ^10.0"
+            },
+            "type": "library",
+            "autoload": {
+                "psr-4": {
+                    "Sushi\\": "src/"
+                }
+            },
+            "notification-url": "https://packagist.org/downloads/",
+            "license": [
+                "MIT"
+            ],
+            "authors": [
+                {
+                    "name": "Caleb Porzio",
+                    "email": "calebporzio@gmail.com"
+                }
+            ],
+            "description": "Eloquent's missing \"array\" driver.",
+            "support": {
+                "source": "https://github.com/calebporzio/sushi/tree/v2.4.5"
+            },
+            "funding": [
+                {
+                    "url": "https://github.com/calebporzio",
+                    "type": "github"
+                }
+            ],
+            "time": "2023-10-17T14:42:34+00:00"
+        },
+        {
             "name": "carbonphp/carbon-doctrine-types",
             "version": "3.2.0",
             "source": {
@@ -661,6 +772,76 @@
                 }
             ],
             "time": "2024-09-19T14:15:21+00:00"
+        },
+        {
+            "name": "croustibat/filament-jobs-monitor",
+            "version": "2.6.1",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/croustibat/filament-jobs-monitor.git",
+                "reference": "c60a5ef58be0642e6e3c9ac96beb46324b1af6a7"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/croustibat/filament-jobs-monitor/zipball/c60a5ef58be0642e6e3c9ac96beb46324b1af6a7",
+                "reference": "c60a5ef58be0642e6e3c9ac96beb46324b1af6a7",
+                "shasum": ""
+            },
+            "require": {
+                "filament/filament": "^3.0",
+                "illuminate/contracts": "^10.0|^11.0|^12.0",
+                "php": "^8.1|^8.2|^8.3|^8.4",
+                "spatie/laravel-package-tools": "^1.13.5"
+            },
+            "require-dev": {
+                "laravel/pint": "^1.0"
+            },
+            "type": "library",
+            "extra": {
+                "laravel": {
+                    "aliases": {
+                        "QueueMonitor": "Croustibat\\FilamentJobsMonitor\\QueueMonitorProvider\\Facade"
+                    },
+                    "providers": [
+                        "Croustibat\\FilamentJobsMonitor\\FilamentJobsMonitorServiceProvider",
+                        "Croustibat\\FilamentJobsMonitor\\QueueMonitorProvider"
+                    ]
+                }
+            },
+            "autoload": {
+                "psr-4": {
+                    "Croustibat\\FilamentJobsMonitor\\": "src"
+                }
+            },
+            "notification-url": "https://packagist.org/downloads/",
+            "license": [
+                "MIT"
+            ],
+            "authors": [
+                {
+                    "name": "Baptiste",
+                    "email": "baptiste@dark-matter.fr",
+                    "role": "Developer"
+                }
+            ],
+            "description": "Background Jobs monitoring like Horizon for all drivers for FilamentPHP",
+            "homepage": "https://github.com/croustibat/filament-jobs-monitor",
+            "keywords": [
+                "croustibat",
+                "filament-jobs-monitor",
+                "laravel"
+            ],
+            "support": {
+                "issues": "https://github.com/croustibat/filament-jobs-monitor/issues",
+                "source": "https://github.com/croustibat/filament-jobs-monitor/tree/2.6.1"
+            },
+            "funding": [
+                {
+                    "url": "https://github.com/croustibat",
+                    "type": "github"
+                }
+            ],
+            "time": "2025-03-21T12:59:08+00:00"
         },
         {
             "name": "danharrin/date-format-converter",
@@ -5727,6 +5908,68 @@
             "time": "2024-12-10T01:58:33+00:00"
         },
         {
+            "name": "pxlrbt/filament-environment-indicator",
+            "version": "v2.1.0",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/pxlrbt/filament-environment-indicator.git",
+                "reference": "e55bca20af0c9cff8a90d0a8779b09df5c4bb9d4"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/pxlrbt/filament-environment-indicator/zipball/e55bca20af0c9cff8a90d0a8779b09df5c4bb9d4",
+                "reference": "e55bca20af0c9cff8a90d0a8779b09df5c4bb9d4",
+                "shasum": ""
+            },
+            "require": {
+                "filament/filament": "^3.0-stable",
+                "php": "^8.0"
+            },
+            "require-dev": {
+                "laravel/pint": "^1.10"
+            },
+            "type": "library",
+            "extra": {
+                "laravel": {
+                    "providers": [
+                        "\\pxlrbt\\FilamentEnvironmentIndicator\\FilamentEnvironmentIndicatorServiceProvider"
+                    ]
+                }
+            },
+            "autoload": {
+                "psr-4": {
+                    "pxlrbt\\FilamentEnvironmentIndicator\\": "src/"
+                }
+            },
+            "notification-url": "https://packagist.org/downloads/",
+            "license": [
+                "MIT"
+            ],
+            "authors": [
+                {
+                    "name": "Dennis Koch",
+                    "email": "info@pixelarbeit.de"
+                }
+            ],
+            "description": "Indicator for the current environment inside Filament",
+            "keywords": [
+                "environment indicator",
+                "filament",
+                "laravel-filament"
+            ],
+            "support": {
+                "issues": "https://github.com/pxlrbt/filament-environment-indicator/issues",
+                "source": "https://github.com/pxlrbt/filament-environment-indicator/tree/v2.1.0"
+            },
+            "funding": [
+                {
+                    "url": "https://github.com/pxlrbt",
+                    "type": "github"
+                }
+            ],
+            "time": "2024-11-18T13:24:51+00:00"
+        },
+        {
             "name": "pxlrbt/filament-excel",
             "version": "v2.4.2",
             "source": {
@@ -6169,6 +6412,82 @@
                 }
             ],
             "time": "2024-02-26T18:08:49+00:00"
+        },
+        {
+            "name": "saade/filament-laravel-log",
+            "version": "v3.2.3",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/saade/filament-laravel-log.git",
+                "reference": "6efdd4b7f6356abd18deca2c4698ec73347c054e"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/saade/filament-laravel-log/zipball/6efdd4b7f6356abd18deca2c4698ec73347c054e",
+                "reference": "6efdd4b7f6356abd18deca2c4698ec73347c054e",
+                "shasum": ""
+            },
+            "require": {
+                "filament/filament": "^3.0",
+                "illuminate/contracts": "^11.0 || ^12.0",
+                "php": "^8.2",
+                "spatie/laravel-package-tools": "^1.15.0"
+            },
+            "require-dev": {
+                "larastan/larastan": "^3.1.0",
+                "laravel/pint": "^1.0",
+                "nunomaduro/collision": "^7.0 || ^8.0",
+                "orchestra/testbench": "^9.0 || ^10.0",
+                "pestphp/pest": "^2.0",
+                "pestphp/pest-plugin-arch": "^2.0",
+                "pestphp/pest-plugin-laravel": "^2.0",
+                "phpstan/extension-installer": "^1.1",
+                "phpstan/phpstan-deprecation-rules": "^2.0.1",
+                "phpstan/phpstan-phpunit": "^2.0.4",
+                "spatie/laravel-ray": "^1.26"
+            },
+            "type": "library",
+            "extra": {
+                "laravel": {
+                    "providers": [
+                        "Saade\\FilamentLaravelLog\\FilamentLaravelLogServiceProvider"
+                    ]
+                }
+            },
+            "autoload": {
+                "psr-4": {
+                    "Saade\\FilamentLaravelLog\\": "src/"
+                }
+            },
+            "notification-url": "https://packagist.org/downloads/",
+            "license": [
+                "MIT"
+            ],
+            "authors": [
+                {
+                    "name": "Saade",
+                    "email": "saade@outlook.com.br",
+                    "role": "Developer"
+                }
+            ],
+            "description": "Access laravel.log file through Filament admin panel",
+            "homepage": "https://github.com/saade/filament-laravel-log",
+            "keywords": [
+                "filament-laravel-log",
+                "laravel",
+                "saade"
+            ],
+            "support": {
+                "issues": "https://github.com/saade/filament-laravel-log/issues",
+                "source": "https://github.com/saade/filament-laravel-log"
+            },
+            "funding": [
+                {
+                    "url": "https://github.com/saade",
+                    "type": "github"
+                }
+            ],
+            "time": "2025-03-19T13:37:46+00:00"
         },
         {
             "name": "shuvroroy/filament-spatie-laravel-health",
@@ -9448,6 +9767,195 @@
                 "source": "https://github.com/tijsverkoyen/CssToInlineStyles/tree/v2.3.0"
             },
             "time": "2024-12-21T16:25:41+00:00"
+        },
+        {
+            "name": "tomatophp/console-helpers",
+            "version": "v1.1.0",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/tomatophp/console-helpers.git",
+                "reference": "69dd818a2bfa7d038467fb526be6c9b573d36a34"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/tomatophp/console-helpers/zipball/69dd818a2bfa7d038467fb526be6c9b573d36a34",
+                "reference": "69dd818a2bfa7d038467fb526be6c9b573d36a34",
+                "shasum": ""
+            },
+            "type": "library",
+            "extra": {
+                "laravel": {
+                    "providers": [
+                        "TomatoPHP\\ConsoleHelpers\\ConsoleHelpersServiceProvider"
+                    ]
+                }
+            },
+            "autoload": {
+                "psr-4": {
+                    "TomatoPHP\\ConsoleHelpers\\": "src/"
+                }
+            },
+            "notification-url": "https://packagist.org/downloads/",
+            "license": [
+                "MIT"
+            ],
+            "authors": [
+                {
+                    "name": "Fady Mondy",
+                    "email": "EngFadyMondy@gmail.com"
+                }
+            ],
+            "description": "tons of helper you need for you artisan command line application",
+            "keywords": [
+                "application",
+                "artisan",
+                "command",
+                "console",
+                "helpers",
+                "line"
+            ],
+            "support": {
+                "issues": "https://github.com/tomatophp/console-helpers/issues",
+                "source": "https://github.com/tomatophp/console-helpers/tree/v1.1.0"
+            },
+            "funding": [
+                {
+                    "url": "https://github.com/3x1io",
+                    "type": "github"
+                }
+            ],
+            "time": "2023-02-12T12:00:38+00:00"
+        },
+        {
+            "name": "tomatophp/filament-artisan",
+            "version": "v1.1.4",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/tomatophp/filament-artisan.git",
+                "reference": "530c26678a987c2117db9bee8be36e7af4ff0513"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/tomatophp/filament-artisan/zipball/530c26678a987c2117db9bee8be36e7af4ff0513",
+                "reference": "530c26678a987c2117db9bee8be36e7af4ff0513",
+                "shasum": ""
+            },
+            "require": {
+                "calebporzio/sushi": "*",
+                "filament/filament": "^3.0.0",
+                "php": "^8.1|^8.2",
+                "tomatophp/console-helpers": "^1.1",
+                "tomatophp/filament-developer-gate": "^1.0"
+            },
+            "type": "library",
+            "extra": {
+                "laravel": {
+                    "providers": [
+                        "TomatoPHP\\FilamentArtisan\\FilamentArtisanServiceProvider"
+                    ]
+                }
+            },
+            "autoload": {
+                "psr-4": {
+                    "TomatoPHP\\FilamentArtisan\\": "src/"
+                }
+            },
+            "notification-url": "https://packagist.org/downloads/",
+            "license": [
+                "MIT"
+            ],
+            "authors": [
+                {
+                    "name": "Fady Mondy",
+                    "email": "info@3x1.io"
+                }
+            ],
+            "description": "Simple but yet powerful library for running some artisan commands for FilamentPHP",
+            "keywords": [
+                "artisan",
+                "commands",
+                "filament",
+                "gui",
+                "laravel",
+                "php"
+            ],
+            "support": {
+                "issues": "https://github.com/tomatophp/filament-artisan/issues",
+                "source": "https://github.com/tomatophp/filament-artisan/tree/v1.1.4"
+            },
+            "funding": [
+                {
+                    "url": "https://github.com/3x1io",
+                    "type": "github"
+                }
+            ],
+            "time": "2024-09-17T16:34:42+00:00"
+        },
+        {
+            "name": "tomatophp/filament-developer-gate",
+            "version": "v1.0.4",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/tomatophp/filament-developer-gate.git",
+                "reference": "4cec435f36cef2a06871cbe7d7cd7b8b11abc7ac"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/tomatophp/filament-developer-gate/zipball/4cec435f36cef2a06871cbe7d7cd7b8b11abc7ac",
+                "reference": "4cec435f36cef2a06871cbe7d7cd7b8b11abc7ac",
+                "shasum": ""
+            },
+            "require": {
+                "filament/filament": "^3.0.0",
+                "filament/notifications": "^3.0.0",
+                "php": "^8.1|^8.2",
+                "tomatophp/console-helpers": "^1.1"
+            },
+            "type": "library",
+            "extra": {
+                "laravel": {
+                    "providers": [
+                        "TomatoPHP\\FilamentDeveloperGate\\FilamentDeveloperGateServiceProvider"
+                    ]
+                }
+            },
+            "autoload": {
+                "psr-4": {
+                    "TomatoPHP\\FilamentDeveloperGate\\": "src/"
+                }
+            },
+            "notification-url": "https://packagist.org/downloads/",
+            "license": [
+                "MIT"
+            ],
+            "authors": [
+                {
+                    "name": "Fady Mondy",
+                    "email": "info@3x1.io"
+                }
+            ],
+            "description": "Secure your selected route by using a middleware with static password for developers only",
+            "keywords": [
+                "auth",
+                "developer",
+                "filament",
+                "gate",
+                "laravel",
+                "php",
+                "secure",
+                "tools"
+            ],
+            "support": {
+                "issues": "https://github.com/tomatophp/filament-developer-gate/issues",
+                "source": "https://github.com/tomatophp/filament-developer-gate/tree/v1.0.4"
+            },
+            "funding": [
+                {
+                    "url": "https://github.com/3x1io",
+                    "type": "github"
+                }
+            ],
+            "time": "2024-07-08T10:18:17+00:00"
         },
         {
             "name": "vlucas/phpdotenv",

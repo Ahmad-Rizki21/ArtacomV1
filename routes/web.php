@@ -12,6 +12,7 @@ use App\Http\Controllers\PelangganExportController;
 use App\Http\Controllers\XenditInvoiceStatusController;
 use App\Http\Controllers\InvoiceViewController;
 use App\Http\Controllers\PaymentController;
+use App\Http\Controllers\StatusController;
 
 // Halaman utama
 Route::get('/', function () {
@@ -83,15 +84,18 @@ Route::get('langganan/import', [LanggananController::class, 'showImportForm'])
 Route::post('langganan/import', [LanggananController::class, 'import'])
 ->name('langganan.import');
 
+Route::get('/admin/pelanggan/status/{id}', [App\Http\Controllers\StatusController::class, 'show'])
+    ->name('admin.pelanggan.status');
 
-Route::get('/test-notification', function() {
-    $invoice = \App\Models\Invoice::first();
-    $user = \App\Models\User::first();
+
+// Route::get('/test-notification', function() {
+//     $invoice = \App\Models\Invoice::first();
+//     $user = \App\Models\User::first();
     
-    if ($invoice && $user) {
-        $user->notify(new \App\Notifications\XenditPaymentNotification($invoice));
-        return "Notifikasi berhasil dikirim ke user ID: " . $user->id;
-    }
+//     if ($invoice && $user) {
+//         $user->notify(new \App\Notifications\XenditPaymentNotification($invoice));
+//         return "Notifikasi berhasil dikirim ke user ID: " . $user->id;
+//     }
     
-    return "Tidak ada invoice atau user ditemukan";
-})->middleware(['auth']);
+//     return "Tidak ada invoice atau user ditemukan";
+// })->middleware(['auth']);

@@ -51,6 +51,7 @@ class Kernel extends ConsoleKernel
         $schedule->command('invoice:check-paid-status')->everyMinute();
 
 
+
         // \App\Console\Commands\MonitorSubscriptionStatus::class  // Daftarkan perintah di sini
         // ->everyMinute()
 
