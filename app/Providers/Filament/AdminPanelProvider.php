@@ -26,6 +26,8 @@ use pxlrbt\FilamentEnvironmentIndicator\EnvironmentIndicatorPlugin;
 use \Croustibat\FilamentJobsMonitor\FilamentJobsMonitorPlugin;
 use Saade\FilamentLaravelLog\FilamentLaravelLogPlugin;
 
+use Leandrocfe\FilamentApexCharts\FilamentApexChartsPlugin;
+
 
 // use DiogoGPinto\AuthUIEnhancer\AuthUIEnhancerPlugin;
 // use Icetalker\FilamentTableRepeater\Forms\Components\TableRepeater;
@@ -130,10 +132,13 @@ class AdminPanelProvider extends PanelProvider
                 ->withLoadTime('This page loaded in'),
                 DashStackThemePlugin::make(),
                 (FilamentSpatieLaravelHealthPlugin::make()),
-                EnvironmentIndicatorPlugin::make(),
-                (\TomatoPHP\FilamentArtisan\FilamentArtisanPlugin::make())
-
-                
+                // EnvironmentIndicatorPlugin::make(),
+                (\TomatoPHP\FilamentArtisan\FilamentArtisanPlugin::make()),
+                // \TomatoPHP\FilamentSettingsHub\FilamentSettingsHubPlugin::make()
+                // ->allowSiteSettings()
+                // ->allowSocialMenuSettings(),
+                // ->allowShield()
+                FilamentApexChartsPlugin::make(),
                 
 
                 ]);

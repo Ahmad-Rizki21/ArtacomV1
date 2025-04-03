@@ -6,6 +6,7 @@ use Filament\Widgets\StatsOverviewWidget as BaseWidget;
 use Filament\Widgets\StatsOverviewWidget\Stat;
 use Illuminate\Support\Facades\DB;
 use App\Models\MikrotikServer;
+use Leandrocfe\FilamentApexCharts\Widgets\ApexChartWidget;
 
 class JumlahPelangganStats extends BaseWidget
 {
@@ -42,43 +43,62 @@ class JumlahPelangganStats extends BaseWidget
         $onlineServers = MikrotikServer::where('last_connection_status', 'success')->count();
         $offlineServers = $totalMikrotikServers - $onlineServers;
 
+        // Data untuk chart pelanggan
+        $chartData = [
+            'Jakinet' => $jakinetCount,
+            'Jelantik' => $jelantikCount,
+            'Jelantik Nagrak' => $jelantikNagrakCount,
+        ];
+
         return [
             Stat::make('Jumlah Pelanggan Jakinet', $jakinetCount)
                 ->description('Jumlah pelanggan Jakinet')
                 ->descriptionIcon('heroicon-m-users')
-                ->color('success'),
+                ->color('success')
+                ->chart($this->generateBrandChart([$jakinetCount, $jakinetCount*0.9, $jakinetCount*0.95, $jakinetCount*0.97, $jakinetCount]))
+                ->chartColor('success'),
                 
             Stat::make('Jumlah Pelanggan Jelantik', $totalJelantik)
                 ->description('Jumlah pelanggan Jelantik (termasuk Rusun Nagrak)')
                 ->descriptionIcon('heroicon-m-users')
-                ->color('primary'),
+                ->color('primary')
+                ->chart($this->generateBrandChart([$totalJelantik*0.8, $totalJelantik*0.85, $totalJelantik*0.9, $totalJelantik*0.95, $totalJelantik]))
+                ->chartColor('primary'),
                 
             Stat::make('Mikrotik Servers', "$onlineServers / $totalMikrotikServers")
                 ->description('Online / Total Servers')
                 ->descriptionIcon('heroicon-m-server')
                 ->color($offlineServers > 0 ? 'danger' : 'success')
-                ->chart(
-                    // Buat chart sederhana untuk representasi visual
-                    $this->generateServerStatusChart($onlineServers, $totalMikrotikServers)
-                )
+                ->chart($this->generateServerStatusDonutChart($onlineServers, $offlineServers))
+                ->chartColor($offlineServers > 0 ? 'danger' : 'success')
         ];
     }
     
     /**
-     * Generate chart sederhana untuk status server
+     * Generate chart brand pelanggan
      * 
-     * @param int $onlineServers
-     * @param int $totalServers
+     * @param array $data
      * @return array
      */
-    protected function generateServerStatusChart(int $onlineServers, int $totalServers): array
+    protected function generateBrandChart(array $data): array
     {
-        // Buat representasi chart sederhana
-        $percentOnline = $totalServers > 0 ? ($onlineServers / $totalServers) * 100 : 0;
-        
-        return array_map(function() use ($percentOnline) {
-            return $percentOnline;
-        }, range(1, 10));
+        return $data;
+    }
+    
+    /**
+     * Generate donut chart untuk status server menggunakan format ApexCharts
+     * 
+     * @param int $onlineServers
+     * @param int $offlineServers
+     * @return array
+     */
+    protected function generateServerStatusDonutChart(int $onlineServers, int $offlineServers): array
+    {
+        // Format ini sesuai dengan render preview chart di Stat
+        return [
+            $offlineServers, $onlineServers, $onlineServers, $onlineServers, $onlineServers,
+            $onlineServers, $onlineServers, $onlineServers, $onlineServers, $onlineServers
+        ];
     }
     
     public static function getSort(): int

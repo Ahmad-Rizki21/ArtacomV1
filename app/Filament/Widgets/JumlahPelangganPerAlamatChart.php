@@ -2,16 +2,32 @@
 
 namespace App\Filament\Widgets;
 
-use Filament\Widgets\ChartWidget;
+use Leandrocfe\FilamentApexCharts\Widgets\ApexChartWidget;
 use Illuminate\Support\Facades\DB;
 
-class JumlahPelangganPerAlamatChart extends ChartWidget
+class JumlahPelangganPerAlamatChart extends ApexChartWidget
 {
+    /**
+     * Chart Id
+     *
+     * @var string
+     */
+    protected static ?string $chartId = 'jumlahPelangganPerAlamat';
+
+    /**
+     * Widget Title
+     *
+     * @var string|null
+     */
     protected static ?string $heading = 'Jumlah Pelanggan per Rusun/Perumahan';
-    
 
-
-    protected function getData(): array
+    /**
+     * Chart options (series, labels, types, size, animations...)
+     * https://apexcharts.com/docs/options
+     *
+     * @return array
+     */
+    protected function getOptions(): array
     {
         // Definisikan alamat-alamat yang ingin ditampilkan
         $alamatOptions = [
@@ -50,31 +66,62 @@ class JumlahPelangganPerAlamatChart extends ChartWidget
         $totalPelanggan = array_sum($data);
 
         // Perbarui heading dengan total jika diperlukan
-        if ($totalPelanggan > 0) {
-            self::$heading = "Jumlah Pelanggan per Rusun/Perumahan (Total: {$totalPelanggan})";
+        self::$heading = "Jumlah Pelanggan per Rusun/Perumahan (Total: {$totalPelanggan})";
+
+        // Pastikan selalu ada data
+        if (empty(array_filter($data))) {
+            $data = [1]; // Minimal satu titik data
+            $labels = ['Tidak Ada Data'];
         }
 
         return [
-            'labels' => $labels,
-            'datasets' => [
+            'chart' => [
+                'type' => 'bar',
+                'height' => 350,
+                'width' => '100%',
+                'toolbar' => [
+                    'show' => true,
+                ],
+            ],
+            'series' => [
                 [
-                    'label' => 'Jumlah Pelanggan',
+                    'name' => 'Jumlah Pelanggan',
                     'data' => $data,
-                    'backgroundColor' => 'rgb(222, 34, 188)', // Pink
-                    'borderColor' => 'rgb(222, 34, 188)',
-                    'fill' => true
                 ]
-            ]
+            ],
+            'xaxis' => [
+                'categories' => $labels,
+                'labels' => [
+                    'rotate' => -45,
+                    'rotateAlways' => true,
+                    'hideOverlappingLabels' => true,
+                ],
+            ],
+            'plotOptions' => [
+                'bar' => [
+                    'horizontal' => false,
+                ],
+            ],
+            'dataLabels' => [
+                'enabled' => true,
+            ],
         ];
     }
 
-    protected function getType(): string
-    {
-        return 'bar';
-    }
+    /**
+     * Polling interval
+     *
+     * @var string|null
+     */
+    protected static ?string $pollingInterval = '60s';
     
+    /**
+     * Widget sort order
+     *
+     * @return int
+     */
     public static function getSort(): int
     {
-        return -3; // Prioritas kedua
+        return -3;
     }
 }
