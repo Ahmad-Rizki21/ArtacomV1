@@ -361,48 +361,90 @@ class XenditService
      * @return array
      */
     private function prepareXenditPayload(Invoice $invoice, ?string $traceId = null): array
-    {
-        try {
-            // Generate reference ID berdasarkan brand dan lokasi
-            $referenceId = $this->formatReferenceId($invoice);
+{
+    try {
+        // Generate reference ID berdasarkan brand dan lokasi
+        $referenceId = $this->formatReferenceId($invoice);
+        
+        // Simpan reference ID ke invoice untuk tracking
+        $invoice->xendit_external_id = $referenceId;
+        $invoice->save();
+        
+        // Buat deskripsi berdasarkan paket internet yang dipilih
+        $description = $this->generatePackageDescription($invoice);
+        
+        // Buat item_name dengan format yang diinginkan
+        $langganan = $invoice->langganan;
+        $itemName = "Layanan Internet";
+        
+        if ($langganan) {
+            // Hitung harga dasar (tanpa PPN)
+            $hargaDasar = round($invoice->total_harga / 1.11);
+            $ppn = $invoice->total_harga - $hargaDasar;
+            $hargaDasarFormatted = number_format($hargaDasar, 0, ',', '.');
+            $ppnFormatted = number_format($ppn, 0, ',', '.');
             
-            // Simpan reference ID ke invoice untuk tracking
-            $invoice->xendit_external_id = $referenceId;
-            $invoice->save();
+            // Tanggal jatuh tempo
+            $dueDateStr = '';
+            if (!empty($langganan->tgl_jatuh_tempo)) {
+                $dueDateObj = Carbon::parse($langganan->tgl_jatuh_tempo);
+                $dueDateStr = " - Jatuh tempo: " . $dueDateObj->format('d M Y');
+            }
             
-            // Buat deskripsi berdasarkan paket internet yang dipilih
-            $description = $this->generatePackageDescription($invoice);
+            // Tentukan kecepatan berdasarkan harga
+            $speed = '10';
+            $brand = strtolower($invoice->brand);
             
-            return [
-                'external_id' => $referenceId, // Gunakan reference ID custom sebagai external_id
-                'payer_email' => $invoice->email,
-                'description' => $description,
-                'amount' => (int) $invoice->total_harga,
-                'customer' => [
-                    'given_names' => $invoice->pelanggan->nama ?? 'Pelanggan',
-                    'email' => $invoice->email,
-                    'mobile_number' => $invoice->no_telp,
-                ],
-                'customer_notification_preference' => [
-                    'invoice_created' => ['email', 'whatsapp'],
-                    'invoice_reminder' => ['email', 'whatsapp'],
-                    'invoice_expired' => ['email', 'whatsapp'],
-                    'invoice_paid' => ['email', 'whatsapp'],
-                ],
-                'metadata' => [
-                    'brand' => $invoice->brand,
-                    'invoice_number' => $invoice->invoice_number,
-                    'trace_id' => $traceId ?? uniqid('xendit_', true)
-                ]
-            ];
-        } catch (Exception $e) {
-            Log::error('Error preparing Xendit payload', [
-                'invoice_number' => $invoice->invoice_number,
-                'error' => $e->getMessage()
-            ]);
-            throw $e;
+            // Cek dari nama layanan atau profil
+            if (!empty($langganan->layanan)) {
+                preg_match('/(\d+)\s*[Mm][Bb][Pp][Ss]/i', $langganan->layanan, $matches);
+                if (!empty($matches[1])) {
+                    $speed = $matches[1];
+                }
+            }
+            
+            $itemName = "Layanan {$speed} Mbps (Harga: {$hargaDasarFormatted} IDR, Pajak: {$ppnFormatted} IDR){$dueDateStr}";
         }
+        
+        // Struktur payload yang sudah ada
+        return [
+            'external_id' => $referenceId,
+            'payer_email' => $invoice->email,
+            'description' => $description,
+            'amount' => (int) $invoice->total_harga,
+            'items' => [
+                [
+                    'name' => $itemName,
+                    'quantity' => 1,
+                    'price' => (int) $invoice->total_harga,
+                    'category' => 'Internet Service'
+                ]
+            ],
+            'customer' => [
+                'given_names' => $invoice->pelanggan->nama ?? 'Pelanggan',
+                'email' => $invoice->email,
+                'mobile_number' => $invoice->no_telp,
+            ],
+            'customer_notification_preference' => [
+                'invoice_created' => ['email', 'whatsapp'],
+                'invoice_reminder' => ['email', 'whatsapp'],
+                'invoice_expired' => ['email', 'whatsapp'],
+                'invoice_paid' => ['email', 'whatsapp'],
+            ],
+            'metadata' => [
+                'brand' => $invoice->brand,
+                'invoice_number' => $invoice->invoice_number,
+                'trace_id' => $traceId ?? uniqid('xendit_', true)
+            ]
+        ];
+    } catch (Exception $e) {
+        Log::error('Error preparing Xendit payload', [
+            'invoice_number' => $invoice->invoice_number,
+            'error' => $e->getMessage()
+        ]);
+        throw $e;
     }
+}
 
     /**
  * Format reference ID berdasarkan brand dan lokasi
@@ -512,75 +554,81 @@ private function formatReferenceId(Invoice $invoice): string
     }
 
     /**
-     * Generate deskripsi berdasarkan paket internet
-     *
-     * @param Invoice $invoice
-     * @return string
-     */
-    private function generatePackageDescription(Invoice $invoice): string
-    {
-        // Coba dapatkan informasi paket dari langganan
-        $langganan = $invoice->langganan;
-        if ($langganan) {
-            // Prioritaskan nilai dari kolom layanan jika tersedia
-            if (!empty($langganan->layanan)) {
-                // Coba ekstrak kecepatan dari layanan
-                preg_match('/(\d+)\s*[Mm][Bb][Pp][Ss]/i', $langganan->layanan, $matches);
-                if (!empty($matches[1])) {
-                    $speed = $matches[1];
-                    return "Biaya berlangganan internet up to {$speed} Mbps";
-                }
-                
-                // Jika tidak bisa ekstrak tapi ada nilai layanan, tambahkan "up to"
-                return "Biaya berlangganan internet up to {$langganan->layanan}";
+ * Generate deskripsi berdasarkan paket internet
+ *
+ * @param Invoice $invoice
+ * @return string
+ */
+private function generatePackageDescription(Invoice $invoice): string
+{
+    // Coba dapatkan informasi paket dari langganan
+    $langganan = $invoice->langganan;
+    if ($langganan) {
+        // Tentukan kecepatan internet
+        $speed = '10';
+        
+        // Coba ekstrak kecepatan dari layanan jika tersedia
+        if (!empty($langganan->layanan)) {
+            preg_match('/(\d+)\s*[Mm][Bb][Pp][Ss]/i', $langganan->layanan, $matches);
+            if (!empty($matches[1])) {
+                $speed = $matches[1];
             }
-            
-            // Jika tidak ada kolom layanan, coba nama_layanan
-            if (!empty($langganan->nama_layanan)) {
-                // Coba ekstrak kecepatan dari nama layanan
-                preg_match('/(\d+)\s*[Mm][Bb][Pp][Ss]/i', $langganan->nama_layanan, $matches);
-                if (!empty($matches[1])) {
-                    $speed = $matches[1];
-                    return "Biaya berlangganan internet up to {$speed} Mbps";
-                }
+        } elseif (!empty($langganan->nama_layanan)) {
+            preg_match('/(\d+)\s*[Mm][Bb][Pp][Ss]/i', $langganan->nama_layanan, $matches);
+            if (!empty($matches[1])) {
+                $speed = $matches[1];
             }
-            
-            // Jika ada kecepatan di profil, gunakan itu
-            if (!empty($langganan->profile_pppoe)) {
-                // Coba ekstrak kecepatan dari profile_pppoe
-                preg_match('/(\d+)[Mm][Bb]/i', $langganan->profile_pppoe, $matches);
-                if (!empty($matches[1])) {
-                    $speed = $matches[1];
-                    return "Biaya berlangganan internet up to {$speed} Mbps";
-                }
+        } elseif (!empty($langganan->profile_pppoe)) {
+            preg_match('/(\d+)[Mm][Bb]/i', $langganan->profile_pppoe, $matches);
+            if (!empty($matches[1])) {
+                $speed = $matches[1];
             }
+        } else {
+            // Estimasi kecepatan berdasarkan harga jika tidak ditemukan
+            $brand = strtolower($invoice->brand);
+            $hargaDasar = $invoice->total_harga / 1.11;
             
-            // Default ke total harga jika semua opsi sebelumnya gagal
-            $harga = $invoice->total_harga ?? $langganan->total_harga_layanan_x_pajak ?? 0;
-            
-            if ($harga > 0) {
-                // Sesuaikan range harga dengan paket yang tersedia
-                if ($harga <= 150000) {
-                    return "Biaya berlangganan internet up to 10 Mbps";
-                } elseif ($harga <= 200000) {
-                    return "Biaya berlangganan internet up to 20 Mbps";
-                } elseif ($harga <= 250000) {
-                    return "Biaya berlangganan internet up to 30 Mbps";
-                } elseif ($harga <= 300000) {
-                    return "Biaya berlangganan internet up to 50 Mbps";
-                } else {
-                    return "Biaya berlangganan internet up to 100 Mbps";
-                }
+            if ($brand === 'ajn-01' || $brand === 'ajn-03') { // Jakinet atau Jelantik (Nagrak)
+                if ($hargaDasar <= 135135) $speed = '10';
+                elseif ($hargaDasar <= 199000) $speed = '20';
+                elseif ($hargaDasar <= 224000) $speed = '30';
+                elseif ($hargaDasar <= 254000) $speed = '50';
+                else $speed = '100';
+            } elseif ($brand === 'ajn-02') { // Jelantik
+                if ($hargaDasar <= 150000) $speed = '10';
+                elseif ($hargaDasar <= 209000) $speed = '20';
+                elseif ($hargaDasar <= 249000) $speed = '30';
+                elseif ($hargaDasar <= 289900) $speed = '50';
+                else $speed = '100';
             }
         }
         
-        // Default jika tidak bisa menentukan paket
-        if (!empty($invoice->description)) {
-            return $invoice->description;
+        // Tambahkan informasi tanggal jatuh tempo
+        $dueDate = '';
+        if (!empty($langganan->tgl_jatuh_tempo)) {
+            try {
+                $dueDateObj = Carbon::parse($langganan->tgl_jatuh_tempo);
+                $formattedDate = $dueDateObj->format('d/m/Y');
+                $dueDate = " jatuh tempo pembayaran tanggal {$formattedDate}";
+            } catch (Exception $e) {
+                Log::error('Error formatting due date', [
+                    'error' => $e->getMessage(),
+                    'langganan_id' => $langganan->id
+                ]);
+            }
         }
         
-        return "Biaya berlangganan internet";
+        // Format deskripsi sesuai contoh gambar kedua
+        return "Biaya berlangganan internet up to {$speed} Mbps{$dueDate}";
     }
+    
+    // Default jika tidak bisa menentukan paket
+    if (!empty($invoice->description)) {
+        return $invoice->description;
+    }
+    
+    return "Biaya berlangganan internet";
+}
 
     /**
      * Proses respons dari Xendit

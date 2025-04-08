@@ -26,6 +26,8 @@ use pxlrbt\FilamentEnvironmentIndicator\EnvironmentIndicatorPlugin;
 use \Croustibat\FilamentJobsMonitor\FilamentJobsMonitorPlugin;
 use Saade\FilamentLaravelLog\FilamentLaravelLogPlugin;
 
+
+
 use Leandrocfe\FilamentApexCharts\FilamentApexChartsPlugin;
 
 
@@ -59,12 +61,13 @@ class AdminPanelProvider extends PanelProvider
                     ->icon('heroicon-o-arrow-right-on-rectangle')
             ])
             
+            
             ->login()
-            ->registration()
+            
             ->spa()
-            ->sidebarCollapsibleOnDesktop()
-            ->sidebarFullyCollapsibleOnDesktop()
-            ->sidebarWidth('15rem')            
+                       
+            ->collapsedSidebarWidth('20rem')
+            ->sidebarWidth('20rem')
             // ->brandLogo(asset('images/jelantik.jpeg'))
             // ->brandLogo(asset('images/jelantik.jpeg'))
             // ->brandLogoHeight('9rem')
@@ -139,7 +142,15 @@ class AdminPanelProvider extends PanelProvider
                 // ->allowSocialMenuSettings(),
                 // ->allowShield()
                 FilamentApexChartsPlugin::make(),
+                    
+                    FilamentJobsMonitorPlugin::make()
+                        ->enableNavigation(),
+                        
+                //FilamentLaravelLogPlugin::make(),
+
                 
+                 \FilipFonal\FilamentLogManager\FilamentLogManager::make(),
+            
 
                 ]);
             

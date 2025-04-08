@@ -37,10 +37,12 @@ Artisan::command('inspire', function () {
 
 // Command untuk menjalankan invoice
 // Schedule::call(new GeneratorDueInvoices)->everyMinute();
-Schedule::command('invoice:generate-due')->everyMinute(); //tiap jam 10 pagi
-Schedule::command('app:check-overdue-subscriptions')->everyMinute(); // tiap 30 Menit
-Schedule::command('app:sync-mikrotik')->everyMinute();
-Schedule::command('invoice:check-paid-status')->everyMinute(); // tiap 1 Menit
+Schedule::command('invoice:generate-due')->everyFiveMinutes(); //tiap jam 10 pagi
+Schedule::command('app:check-overdue-subscriptions')->everyFiveMinutes(); // tiap 30 Menit
+Schedule::command('app:sync-mikrotik')->everyFiveMinutes();
+Schedule::command('invoice:check-paid-status')->everyFiveMinutes(); // tiap 1 Menit
+Schedule::command('monitor:mikrotik')->everyFiveMinutes(); // tiap 1 Menit
+
 
 // Schedule::call(function () {
 //     Langganan::checkAllSubscriptionStatus();

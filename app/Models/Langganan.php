@@ -120,42 +120,151 @@ class Langganan extends Model
         });
     }
 
-     public function hitungTotalHarga($isManual = false, $manualHarga = null)
-    {
-        if ($isManual && $manualHarga !== null) {
-            $this->total_harga_layanan_x_pajak = $manualHarga;
-            return $manualHarga;
-        }
+//     public function hitungTotalHarga($isManual = false, $manualHarga = null)
+// {
+//     if ($isManual && $manualHarga !== null) {
+//         $this->total_harga_layanan_x_pajak = ceil($manualHarga / 1000) * 1000;
+//         return $this->total_harga_layanan_x_pajak;
+//     }
 
-        if (!$this->id_brand) {
-            return 0;
-        }
+//     if (!$this->id_brand) {
+//         return 0;
+//     }
 
-        $hargaLayanan = HargaLayanan::find($this->id_brand);
-        if ($hargaLayanan) {
-            // Jika layanan belum ditentukan, coba ekstrak dari profile_pppoe
-            if (!$this->layanan && $this->profile_pppoe) {
-                $matches = [];
-                if (preg_match('/(\d+)Mbps/', $this->profile_pppoe, $matches)) {
-                    $this->layanan = $matches[1] . ' Mbps';
-                }
-            }
+//     $hargaLayanan = HargaLayanan::find($this->id_brand);
+//     if ($hargaLayanan) {
+//         // Jika layanan belum ditentukan, coba ekstrak dari profile_pppoe
+//         if (!$this->layanan && $this->profile_pppoe) {
+//             $matches = [];
+//             if (preg_match('/(\d+)Mbps/', $this->profile_pppoe, $matches)) {
+//                 $this->layanan = $matches[1] . ' Mbps';
+//             }
+//         }
 
-            $harga = match ($this->layanan) {
-                '10 Mbps' => $hargaLayanan->harga_10mbps,
-                '20 Mbps' => $hargaLayanan->harga_20mbps,
-                '30 Mbps' => $hargaLayanan->harga_30mbps,
-                '50 Mbps' => $hargaLayanan->harga_50mbps,
-                default => 0,
-            };
+//         // Penanganan khusus untuk Jelantik Nagrak (ajn-03)
+//         if ($hargaLayanan->id_brand === 'ajn-03') {
+//             // Gunakan harga dari Jakinet (ajn-01)
+//             $jakinetHarga = HargaLayanan::where('id_brand', 'ajn-01')->first();
+            
+//             if ($jakinetHarga) {
+//                 $harga = match ($this->layanan) {
+//                     '10 Mbps' => $jakinetHarga->harga_10mbps,
+//                     '20 Mbps' => $jakinetHarga->harga_20mbps,
+//                     '30 Mbps' => $jakinetHarga->harga_30mbps,
+//                     '50 Mbps' => $jakinetHarga->harga_50mbps,
+//                     default => 0,
+//                 };
+                
+//                 $pajak = ($hargaLayanan->pajak / 100) * $harga;
+//                 $total = $harga + $pajak;
+//                 $totalBulat = ceil($total / 1000) * 1000;
+                
+//                 $this->total_harga_layanan_x_pajak = $totalBulat;
+//                 return $totalBulat;
+//             }
+//         }
 
-            $pajak = ($hargaLayanan->pajak / 100) * $harga;
-            $this->total_harga_layanan_x_pajak = $harga + $pajak;
-            return $this->total_harga_layanan_x_pajak;
-        }
+//         // Perhitungan normal untuk brand lain
+//         $harga = match ($this->layanan) {
+//             '10 Mbps' => $hargaLayanan->harga_10mbps,
+//             '20 Mbps' => $hargaLayanan->harga_20mbps,
+//             '30 Mbps' => $hargaLayanan->harga_30mbps,
+//             '50 Mbps' => $hargaLayanan->harga_50mbps,
+//             default => 0,
+//         };
 
+//         $pajak = ($hargaLayanan->pajak / 100) * $harga;
+//         $total = $harga + $pajak;
+//         $totalBulat = ceil($total / 1000) * 1000;
+        
+//         $this->total_harga_layanan_x_pajak = $totalBulat;
+//         return $totalBulat;
+//     }
+
+//     return 0;
+// }
+
+
+
+public function hitungTotalHarga($isManual = false, $manualHarga = null)
+{
+    // Jika metode pembayaran manual dan ada harga yang diinput, gunakan itu
+    if ($this->metode_pembayaran == 'manual' && $this->total_harga_layanan_x_pajak && !$isManual) {
+        // Jika sudah ada nilai total dari input manual, gunakan itu
+        return $this->total_harga_layanan_x_pajak;
+    }
+
+    // Jika eksplisit memanggil dengan harga manual
+    if ($isManual && $manualHarga !== null) {
+        $this->total_harga_layanan_x_pajak = $manualHarga;
+        return $this->total_harga_layanan_x_pajak;
+    }
+
+    if (!$this->id_brand) {
         return 0;
     }
+
+    $hargaLayanan = HargaLayanan::find($this->id_brand);
+    if ($hargaLayanan) {
+        // Jika layanan belum ditentukan, coba ekstrak dari profile_pppoe
+        if (!$this->layanan && $this->profile_pppoe) {
+            $matches = [];
+            if (preg_match('/(\d+)Mbps/', $this->profile_pppoe, $matches)) {
+                $this->layanan = $matches[1] . ' Mbps';
+            }
+        }
+
+        // Mendapatkan harga dasar
+        $harga = match ($this->layanan) {
+            '10 Mbps' => $hargaLayanan->harga_10mbps,
+            '20 Mbps' => $hargaLayanan->harga_20mbps,
+            '30 Mbps' => $hargaLayanan->harga_30mbps,
+            '50 Mbps' => $hargaLayanan->harga_50mbps,
+            default => 0,
+        };
+
+        // Menghitung pajak dengan floor untuk menghindari angka berkoma
+        $pajak = floor(($hargaLayanan->pajak / 100) * $harga);
+        
+        // Hitung total
+        $total = $harga + $pajak;
+        
+        // Bulatkan ke atas ke kelipatan 1000
+        $totalBulat = ceil($total / 1000) * 1000;
+        
+        // Untuk harga Jakinet, bulatkan ke nilai khusus
+        if ($hargaLayanan->id_brand === 'ajn-01') {
+            if ($this->layanan === '10 Mbps') $totalBulat = 150000;
+            else if ($this->layanan === '20 Mbps') $totalBulat = 220890;
+            else if ($this->layanan === '30 Mbps') $totalBulat = 248640; 
+            else if ($this->layanan === '50 Mbps') $totalBulat = 281940;
+        }
+        
+        // Untuk harga Jelantik, bulatkan ke nilai khusus
+        if ($hargaLayanan->id_brand === 'ajn-02') {
+            if ($this->layanan === '10 Mbps') $totalBulat = 166500;
+            else if ($this->layanan === '20 Mbps') $totalBulat = 231990;
+            else if ($this->layanan === '30 Mbps') $totalBulat = 276390;
+            else if ($this->layanan === '50 Mbps') $totalBulat = 321789;
+        }
+
+        // Untuk harga Jelantik Nagrak, bulatkan ke nilai khusus
+        if ($hargaLayanan->id_brand === 'ajn-03') {
+            if ($this->layanan === '10 Mbps') $totalBulat = 150000;
+            else if ($this->layanan === '20 Mbps') $totalBulat = 220890;
+            else if ($this->layanan === '30 Mbps') $totalBulat = 248640; 
+            else if ($this->layanan === '50 Mbps') $totalBulat = 281940;
+        }
+
+        $this->total_harga_layanan_x_pajak = $totalBulat;
+        return $totalBulat;
+    }
+
+    return 0;
+}
+
+
+
 
     public function setTanggalJatuhTempo($tanggalBerlangganan = null)
     {
@@ -267,8 +376,9 @@ class Langganan extends Model
             // Simpan status lama sebelum diubah
             $oldStatus = $this->user_status;
             
-            // Buat tanggal jatuh tempo 1 bulan dari tanggal invoice
-            $tanggalJatuhTempo = $tanggalInvoiceCarbon->copy()->addMonth();
+            // Buat tanggal jatuh tempo 1 bulan dari tanggal berlangganan (bukan tanggal invoice)
+            $tanggalBerlangganan = $this->tgl_jatuh_tempo ? Carbon::parse($this->tgl_jatuh_tempo) : $tanggalInvoiceCarbon;
+            $tanggalJatuhTempo = $tanggalBerlangganan->copy()->addMonthNoOverflow();
             
             // Update tanggal jatuh tempo
             $this->tgl_jatuh_tempo = $tanggalJatuhTempo;
@@ -397,6 +507,34 @@ class Langganan extends Model
         return false;
     }
 
+
+
+    /**
+ * Ubah metode pembayaran ke otomatis setelah bayar prorate
+ */
+public function switchToAutomaticPayment()
+{
+    // Ubah metode pembayaran ke otomatis
+    $this->metode_pembayaran = 'otomatis';
+    
+    // Hitung ulang total harga berdasarkan paket dan brand
+    $this->hitungTotalHarga();
+    
+    // Simpan perubahan
+    $this->save();
+    
+    Log::info('Metode pembayaran diubah ke otomatis setelah prorate dibayar', [
+        'pelanggan_id' => $this->pelanggan_id,
+        'invoice_number' => $this->last_processed_invoice,
+        'total_harga_baru' => $this->total_harga_layanan_x_pajak
+    ]);
+    
+    return true;
+}
+
+
+
+
     /**
      * Fungsi untuk menangani pembayaran invoice
      * Setelah invoice dibayar, update status langganan dan tanggal jatuh tempo
@@ -423,6 +561,9 @@ class Langganan extends Model
             try {
                 // Update dalam transaction untuk menghindari race condition
                 DB::transaction(function() use ($invoice) {
+                    // Cek apakah ini prorate payment
+                    $isProrate = $this->metode_pembayaran === 'manual';
+                    
                     // Update status langganan menjadi Aktif
                     $this->user_status = 'Aktif';
                     
@@ -443,6 +584,19 @@ class Langganan extends Model
                     // Catat invoice yang sudah diproses
                     $this->last_processed_invoice = $invoice->invoice_number;
                     
+                    // Jika metode pembayaran manual (prorate), ubah ke otomatis
+                    if ($isProrate) {
+                        $this->metode_pembayaran = 'otomatis';
+                        
+                        // Hitung ulang total harga
+                        $this->hitungTotalHarga();
+                        
+                        Log::info('Metode pembayaran diubah dari prorate ke otomatis', [
+                            'pelanggan_id' => $this->pelanggan_id,
+                            'total_harga_baru' => $this->total_harga_layanan_x_pajak
+                        ]);
+                    }
+                    
                     // Simpan perubahan
                     $this->save();
                 });
@@ -452,7 +606,8 @@ class Langganan extends Model
                     'pelanggan_id' => $this->pelanggan_id,
                     'status_baru' => $this->user_status,
                     'tgl_jatuh_tempo_baru' => $this->tgl_jatuh_tempo,
-                    'last_processed_invoice' => $this->last_processed_invoice
+                    'last_processed_invoice' => $this->last_processed_invoice,
+                    'metode_pembayaran' => $this->metode_pembayaran
                 ]);
                 
                 // Update status di Mikrotik

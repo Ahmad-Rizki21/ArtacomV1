@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Support\Facades\Log;
 
 class Pelanggan extends Model
 {
@@ -48,4 +49,12 @@ class Pelanggan extends Model
     {
         return $this->hasMany(Langganan::class);
     }
+
+    public function setAlamat2Attribute($value)
+{
+    Log::info('Nilai alamat_2:', ['value' => $value]);
+    $this->attributes['alamat_2'] = $value;
+}
+
+
 }

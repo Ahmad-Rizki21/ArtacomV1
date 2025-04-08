@@ -6,7 +6,7 @@ use App\Filament\Resources\PelangganResource\Pages;
 use App\Models\Pelanggan;
 use Filament\Forms\Form;
 use Filament\Forms\Components\TextInput;
-use Filament\Forms\Components\TextArea;
+use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\Card;
 use Filament\Forms\Components\Section;
 use Filament\Forms\Components\Grid;
@@ -32,8 +32,9 @@ class PelangganResource extends Resource
     protected static ?string $navigationLabel = 'Data Pelanggan';
     protected static ?string $navigationIcon = 'heroicon-o-user-group';
     protected static ?string $navigationGroup = 'FTTH';
+    protected static ?int $navigationSort = -4;
     protected static ?string $recordTitleAttribute = 'nama';
-    protected static ?int $navigationSort = 1;
+    
 
     public static function form(Form $form): Form
     {

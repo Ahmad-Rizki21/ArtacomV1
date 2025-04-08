@@ -33,8 +33,7 @@ class JumlahPelangganPerAlamatChart extends ApexChartWidget
         $alamatOptions = [
             'Rusun Nagrak',
             'Rusun Pinus Elok',
-            'Rusun Pulogebang Tower',
-            'Rusun Pulogebang Blok',
+            'Rusun Pulogebang',
             'Rusun KM2',
             'Rusun Tipar Cakung',
             'Rusun Albo',
@@ -70,7 +69,7 @@ class JumlahPelangganPerAlamatChart extends ApexChartWidget
 
         // Pastikan selalu ada data
         if (empty(array_filter($data))) {
-            $data = [1]; // Minimal satu titik data
+            $data = [0]; // Minimal satu titik data
             $labels = ['Tidak Ada Data'];
         }
 

@@ -27,31 +27,39 @@ class Kernel extends ConsoleKernel
         
         // Untuk development - jalankan setiap menit
         $schedule->command('invoice:generate-due --days=5')
-        ->everyMinutes()
+        ->everyFiveMinutes()
         ->appendOutputTo(storage_path('logs/invoice-scheduler.log'));
 
         $schedule->command('app:check-overdue-subscriptions')
-        ->everyMinutes()       
+        ->everyFiveMinutes()       
         //  ->daily()
         //  ->at('00:01')
                  ->appendOutputTo(storage_path('logs/subscription-checks.log'));
 
         $schedule->command('check:due-date')
-        ->everyMinutes()
+        ->everyFiveMinutes()
         ->appendOutputTo(storage_path('logs/due-date-check.log'));
 
         $schedule->command('app:sync-mikrotik-status')
-        ->everyMinutes()
+        ->everyFiveMinutes()
         ->appendOutputTo(storage_path('logs/mikrotik-sync.log'));
 
         $schedule->call(function () {
             Langganan::checkAllSubscriptionStatus();
-        })->everyMinutes();
+        })->everyFiveMinutes();
 
-        $schedule->command('invoice:check-paid-status')->everyMinute();
+        $schedule->command('invoice:check-paid-status')->everyFiveMinutes();
+        $schedule->command('monitor:mikrotik')->everyFiveMinutes();
+
+        $schedule->command('queue:work --stop-when-empty --tries=3')
+         ->everyFiveMinutes()
+         ->withoutOverlapping()
+         ->appendOutputTo(storage_path('logs/queue-worker.log'));
 
 
-
+         $schedule->command('server:capture-status')
+         ->everyFiveMinute() // atau sesuai kebutuhan, misalnya ->everyFiveMinutes()
+         ->appendOutputTo(storage_path('logs/server-status.log'));
         // \App\Console\Commands\MonitorSubscriptionStatus::class  // Daftarkan perintah di sini
         // ->everyMinute()
 

@@ -5,10 +5,160 @@ namespace App\Services;
 use RouterOS\Client;
 use RouterOS\Query;
 use App\Models\MikrotikServer;
+use App\Models\ServerMetric;
 use Illuminate\Support\Facades\Log;
 
 class MikrotikConnectionService
 {
+
+    /**
+     * Collect and store metrics from a Mikrotik server
+     * 
+     * @param MikrotikServer|null $server
+     * @return bool
+     */
+    public function collectMetrics($server = null)
+{
+    $client = $this->connect($server);
+
+    if (!$client) {
+        return null;
+    }
+
+    try {
+        // Get system resources
+        $resources = $client->query('/system/resource/print')->read();
+        $resource = $resources[0] ?? [];
+        
+        // Get interface traffic
+        $interfaces = $client->query('/interface/print')->read();
+        
+        // Get active connections
+        $connections = $client->query('/ip/firewall/connection/print')->read();
+        
+        // Siapkan data untuk disimpan ke database
+        $cpuLoad = $resource['cpu-load'] ?? null;
+        
+        $memoryUsage = null;
+        if (isset($resource['free-memory']) && isset($resource['total-memory'])) {
+            $memoryUsage = round((1 - ($resource['free-memory'] / $resource['total-memory'])) * 100, 2) . '%';
+        }
+        
+        $diskUsage = null;
+        if (isset($resource['free-hdd-space']) && isset($resource['total-hdd-space'])) {
+            $diskUsage = round((1 - ($resource['free-hdd-space'] / $resource['total-hdd-space'])) * 100, 2) . '%';
+        }
+        
+        // Simpan data ke database
+        $metrics = ServerMetric::create([
+            'mikrotik_server_id' => $server->id,
+            'cpu_load' => $cpuLoad,
+            'memory_usage' => $memoryUsage,
+            'disk_usage' => $diskUsage,
+            'uptime' => $resource['uptime'] ?? null,
+            'interfaces_traffic' => json_encode($interfaces),
+            'active_connections' => json_encode(array_slice($connections, 0, 100)),
+            'system_resources' => json_encode($resource),
+            'additional_info' => json_encode([
+                'board_name' => $resource['board-name'] ?? null,
+                'version' => $resource['version'] ?? null
+            ]),
+        ]);
+        
+        // Update status koneksi server
+        $server->update([
+            'last_connection_status' => 'success',
+            'last_connected_at' => now(),
+            'ros_version' => $resource['version'] ?? null
+        ]);
+        
+        return [
+            'success' => true,
+            'metrics_id' => $metrics->id,
+            'resource' => $resource
+        ];
+    } catch (\Exception $e) {
+        Log::error('Error collecting metrics: ' . $e->getMessage(), [
+            'server' => $server->name ?? 'unknown',
+            'trace' => $e->getTraceAsString()
+        ]);
+        
+        // Update status server
+        if ($server) {
+            $server->update([
+                'last_connection_status' => 'failed',
+                'last_connected_at' => now()
+            ]);
+        }
+        
+        return null;
+    }
+}
+    
+    /**
+     * Get system resources
+     * 
+     * @param Client $client
+     * @return array
+     */
+    public function getSystemResources(Client $client)
+    {
+        $query = new Query('/system/resource/print');
+        return $client->query($query)->read();
+    }
+    
+    /**
+     * Get network interfaces
+     * 
+     * @param Client $client
+     * @return array
+     */
+    public function getInterfaces(Client $client)
+    {
+        $query = new Query('/interface/print');
+        return $client->query($query)->read();
+    }
+    
+    /**
+     * Get active connections
+     * 
+     * @param Client $client
+     * @return array
+     */
+    public function getActiveConnections(Client $client)
+    {
+        $query = new Query('/ip/firewall/connection/print');
+        return $client->query($query)->read();
+    }
+    
+    /**
+     * Get wireless clients
+     * 
+     * @param Client $client
+     * @return array
+     */
+    public function getWirelessClients(Client $client)
+    {
+        $query = new Query('/interface/wireless/registration-table/print');
+        return $client->query($query)->read();
+    }
+    
+    /**
+     * Get DHCP leases
+     * 
+     * @param Client $client
+     * @return array
+     */
+    public function getDhcpLeases(Client $client)
+    {
+        $query = new Query('/ip/dhcp-server/lease/print');
+        return $client->query($query)->read();
+    }
+
+
+
+
+
     /**
      * Membuat koneksi ke Mikrotik
      * 

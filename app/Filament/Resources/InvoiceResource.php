@@ -42,6 +42,8 @@ class InvoiceResource extends Resource
     protected static ?string $navigationIcon = 'heroicon-o-document-text';
     protected static ?string $navigationLabel = 'Invoices';
     protected static ?string $navigationGroup = 'Billing';
+    protected static ?int $navigationSort = -2; // Angka kecil untuk berada di urutan pertama dalam grup Billing
+
     protected static ?string $slug = 'invoices';
     protected static ?string $modelLabel = 'Invoice';
 
@@ -70,27 +72,27 @@ class InvoiceResource extends Resource
                                     ->displayFormat('d M Y')
                                     ->closeOnDateSelection(),
                                 
+                                    // Inside InvoiceResource.php, modify the DatePicker for tgl_jatuh_tempo
                                     DatePicker::make('tgl_jatuh_tempo')
-                                    ->label('Tanggal Jatuh Tempo')
-                                    ->required()
-                                    ->default(function (callable $get) {
-                                        // Coba ambil dari pelanggan_id
-                                        $pelangganId = $get('pelanggan_id');
-                                        if ($pelangganId) {
-                                            $langganan = Langganan::where('pelanggan_id', $pelangganId)->first();
-                                            if ($langganan && $langganan->tgl_jatuh_tempo) {
-                                                return Carbon::parse($langganan->tgl_jatuh_tempo);
-                                            }
+                                ->label('Tanggal Jatuh Tempo')
+                                ->required()
+                                ->disabled()
+                                ->dehydrated()
+                                ->displayFormat('d M Y')
+                                ->closeOnDateSelection()
+                                ->default(function (callable $get) {
+                                    $pelangganId = $get('pelanggan_id');
+                                    if ($pelangganId) {
+                                        $langganan = Langganan::where('pelanggan_id', $pelangganId)->first();
+                                        if ($langganan && $langganan->tgl_jatuh_tempo) {
+                                            return Carbon::parse($langganan->tgl_jatuh_tempo);
                                         }
-                                        
-                                        // Jika tidak ada, gunakan tanggal invoice
-                                        $invoiceDate = $get('tgl_invoice') ?? now();
-                                        return Carbon::parse($invoiceDate);
-                                    })
-                                    ->displayFormat('d M Y')
-                                    ->closeOnDateSelection()
-                                    ->helperText('Default menggunakan tanggal jatuh tempo dari langganan'),
-                            ]),
+                                    }
+                                    // Fallback to invoice date if no subscription due date
+                                    return $get('tgl_invoice') ?? now();
+                                })
+                                ->helperText('Tanggal jatuh tempo diambil otomatis dari data langganan'),
+                        ]),
                     ]),
                 
                 // Customer Information Section
@@ -217,33 +219,42 @@ class InvoiceResource extends Resource
     }
 
     // Method untuk mengupdate data invoice berdasarkan pelanggan
-    public static function updateInvoiceData(callable $set, $pelangganId)
+        public static function updateInvoiceData(callable $set, $pelangganId)
     {
         try {
             $pelanggan = Pelanggan::findOrFail($pelangganId);
             $dataTeknis = DataTeknis::where('pelanggan_id', $pelangganId)->firstOrFail();
             $langganan = Langganan::where('pelanggan_id', $pelangganId)->firstOrFail();
             
-            // Set data pelanggan
+            // Set pelanggan data
             $set('no_telp', $pelanggan->no_telp);
             $set('email', $pelanggan->email);
             $set('id_pelanggan', $dataTeknis->id_pelanggan);
 
-            // Ambil harga layanan
+            // Set layanan data
             $hargaLayanan = HargaLayanan::where('id_brand', $langganan->id_brand)->firstOrFail();
             $set('brand', $hargaLayanan->brand);
             $set('total_harga', $langganan->total_harga_layanan_x_pajak);
 
-            // Set tanggal invoice ke hari ini
+            // Set invoice date
             $invoiceDate = now();
             $set('tgl_invoice', $invoiceDate);
 
-            // Set tanggal jatuh tempo dari langganan jika ada, jika tidak gunakan tanggal invoice
+            // Set due date from subscription
             if ($langganan->tgl_jatuh_tempo) {
                 $set('tgl_jatuh_tempo', Carbon::parse($langganan->tgl_jatuh_tempo));
+                Log::info('Setting due date from subscription', [
+                    'pelanggan_id' => $pelangganId,
+                    'due_date' => $langganan->tgl_jatuh_tempo
+                ]);
             } else {
                 $set('tgl_jatuh_tempo', $invoiceDate);
+                Log::info('Setting due date to invoice date (no subscription due date found)', [
+                    'pelanggan_id' => $pelangganId,
+                    'due_date' => $invoiceDate
+                ]);
             }
+            
         } catch (\Exception $e) {
             Log::error('Error updating invoice data', [
                 'pelanggan_id' => $pelangganId,
@@ -328,6 +339,26 @@ class InvoiceResource extends Resource
                         default => null,
                     }),
 
+                    TextColumn::make('paid_at')
+                    ->label('Tanggal Pembayaran')
+                    ->formatStateUsing(function ($record) {
+                        if (!$record->paid_at) return '-';
+                        
+                        // Konversi UTC ke WIB (UTC+7)
+                        $localTime = \Carbon\Carbon::parse($record->paid_at)
+                            ->addHours(7)
+                            ->format('d M Y : H:i:s');
+                        
+                        return $localTime;
+                    })
+                    ->sortable()
+                    ->toggleable()
+                    ->description(fn ($record) => 
+                        $record->paid_at ? 'Pembayaran diterima' : '-'
+                    )
+                    ->color(fn ($record) => 
+                        $record->paid_at ? 'success' : 'danger'
+                    ),
                 TextColumn::make('xendit_external_id')
                     ->label('Xendit External ID')
                     ->searchable()

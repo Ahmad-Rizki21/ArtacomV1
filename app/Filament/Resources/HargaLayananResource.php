@@ -30,7 +30,7 @@ class HargaLayananResource extends Resource
     protected static ?string $navigationLabel = 'Harga Layanan';
     protected static ?string $navigationIcon = 'heroicon-o-currency-dollar';
     protected static ?string $navigationGroup = 'FTTH';
-    protected static ?int $navigationSort = 2;
+    protected static ?int $navigationSort = -1;
     protected static ?string $recordTitleAttribute = 'brand';
 
     public static function form(Forms\Form $form): Forms\Form
@@ -71,14 +71,15 @@ class HargaLayananResource extends Resource
                     ->icon('heroicon-o-calculator')
                     ->schema([
                         TextInput::make('pajak')
-                            ->label('Pajak (%)')
-                            ->required()
-                            ->numeric()
-                            ->minValue(0)
-                            ->maxValue(100)
-                            ->suffix('%')
-                            ->default(11)
-                            ->helperText('Persentase pajak yang akan diterapkan ke semua harga.'),
+                        ->label('Pajak (%)')
+                        ->required()
+                        ->numeric()
+                        ->minValue(0)
+                        ->maxValue(100)
+                        ->suffix('%')
+                        ->default(11)
+                        ->helperText('Masukkan persentase pajak (misalnya 11 untuk 11%). Nilai ini akan digunakan untuk menghitung pajak dari harga dasar.')
+                        ->reactive(),
                     ]),
 
                 Section::make('Harga Paket Internet')
@@ -178,30 +179,33 @@ class HargaLayananResource extends Resource
                     ->formatStateUsing(fn ($state) => "{$state}%")
                     ->alignCenter(),
 
-                TextColumn::make('harga_10mbps')
+                    TextColumn::make('harga_10mbps')
                     ->label('10 Mbps')
-                    ->money('IDR')
+                    ->formatStateUsing(fn ($state) => 'IDR ' . number_format((int)$state, 0, '', '.'))
                     ->sortable()
                     ->alignRight()
                     ->color('success'),
-
+    
+                // Ubah format harga 20 Mbps
                 TextColumn::make('harga_20mbps')
                     ->label('20 Mbps')
-                    ->money('IDR')
+                    ->formatStateUsing(fn ($state) => 'IDR ' . number_format((int)$state, 0, '', '.'))
                     ->sortable()
                     ->alignRight()
                     ->color('success'),
-
+    
+                // Ubah format harga 30 Mbps
                 TextColumn::make('harga_30mbps')
                     ->label('30 Mbps')
-                    ->money('IDR')
+                    ->formatStateUsing(fn ($state) => 'IDR ' . number_format((int)$state, 0, '', '.'))
                     ->sortable()
                     ->alignRight()
                     ->color('success'),
-
+    
+                // Ubah format harga 50 Mbps
                 TextColumn::make('harga_50mbps')
                     ->label('50 Mbps')
-                    ->money('IDR')
+                    ->formatStateUsing(fn ($state) => 'IDR ' . number_format((int)$state, 0, '', '.'))
                     ->sortable()
                     ->alignRight()
                     ->color('success'),

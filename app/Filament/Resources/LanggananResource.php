@@ -35,7 +35,8 @@ class LanggananResource extends Resource
     protected static ?string $model = Langganan::class;
     protected static ?string $navigationLabel = 'Langganan / Paket';
     protected static ?string $navigationIcon = 'heroicon-o-wifi';
-    protected static ?string $navigationGroup = 'Layanan';
+    protected static ?string $navigationGroup = 'FTTH';
+    protected static ?int $navigationSort = -2;
     protected static ?string $slug = 'langganan';
     protected static ?string $modelLabel = 'Langganan';
     protected static ?string $pluralModelLabel = 'Daftar Langganan';
@@ -122,34 +123,44 @@ class LanggananResource extends Resource
                                     ->columns(2)
                                     ->schema([
                                         Select::make('metode_pembayaran')
-                                            ->label('Metode Pembayaran')
-                                            ->helperText('Otomatis untuk harga reguler, Manual untuk prorate')
-                                            ->options([
-                                                'otomatis' => 'Otomatis (Reguler)',
-                                                'manual' => 'Manual (Prorate)',
-                                            ])
-                                            ->required()
-                                            ->live()
-                                            ->default('otomatis')
-                                            ->afterStateUpdated(function ($state, callable $set, callable $get) {
-                                                if ($state == 'manual') {
-                                                    $set('total_harga_layanan_x_pajak', null);
-                                                } else {
-                                                    self::updateTotalHarga($set, $get);
-                                                }
-                                            }),
+                                        ->label('Metode Pembayaran')
+                                        ->helperText('Otomatis untuk harga reguler, Manual untuk prorate')
+                                        ->options([
+                                            'otomatis' => 'Otomatis (Reguler)',
+                                            'manual' => 'Manual (Prorate)',
+                                        ])
+                                        ->required()
+                                        ->live()
+                                        ->default('otomatis')
+                                        ->afterStateUpdated(function ($state, callable $set, callable $get) {
+                                            if ($state == 'manual') {
+                                                // Reset nilai total jika memilih manual
+                                                $set('total_harga_layanan_x_pajak', null);
+                                            } else {
+                                                self::updateTotalHarga($set, $get);
+                                            }
+                                        }),
+
                                         
                                         TextInput::make('total_harga_layanan_x_pajak')
-                                            ->label('Total Harga (Termasuk Pajak)')
-                                            ->numeric()
-                                            ->prefix('Rp')
-                                            ->required(fn ($get) => $get('metode_pembayaran') == 'manual')
-                                            ->disabled(fn ($get) => $get('metode_pembayaran') == 'otomatis')
-                                            ->dehydrated(true)
-                                            ->helperText(fn ($get) => $get('metode_pembayaran') == 'manual' 
-                                                ? 'Masukkan total harga termasuk pajak' 
-                                                : 'Harga dihitung otomatis berdasarkan paket')
-                                            ->placeholder('0'),
+                                        ->label('Total Harga (Termasuk Pajak)')
+                                        ->numeric()
+                                        ->prefix('Rp')
+                                        ->required(fn ($get) => $get('metode_pembayaran') == 'manual')
+                                        ->disabled(fn ($get) => $get('metode_pembayaran') == 'otomatis')
+                                        ->dehydrated(true) // Pastikan ini selalu true
+                                        ->afterStateHydrated(function ($state, callable $set, callable $get) {
+                                            // Pastikan nilai tidak diresett saat form diload ulang
+                                            if ($get('metode_pembayaran') == 'manual' && empty($state)) {
+                                                // Jangan set nilai apapun, biarkan kosong
+                                            } else if ($get('metode_pembayaran') == 'otomatis') {
+                                                self::updateTotalHarga($set, $get);
+                                            }
+                                        })
+                                        ->helperText(fn ($get) => $get('metode_pembayaran') == 'manual' 
+                                            ? 'Masukkan total harga termasuk pajak' 
+                                            : 'Harga dihitung otomatis berdasarkan paket')
+                                        ->placeholder('0'),
                                     ]),
 
                                 // Informasi perhitungan harga (hanya ditampilkan saat otomatis)
@@ -167,58 +178,223 @@ class LanggananResource extends Resource
     /**
      * Metode untuk menghitung total harga berdasarkan layanan dan brand
      */
-    public static function updateTotalHarga(callable $set, callable $get)
-    {
-        try {
-            $metodePembayaran = $get('metode_pembayaran');
+    // public static function updateTotalHarga(callable $set, callable $get)
+    // {
+    //     try {
+    //         $metodePembayaran = $get('metode_pembayaran');
             
-            // Jika memilih otomatis, hitung otomatis harga berdasarkan layanan dan brand
-            if ($metodePembayaran == 'otomatis') {
-                $brandId = $get('id_brand');
-                $layanan = $get('layanan');
+    //         // Jika memilih otomatis, hitung otomatis harga berdasarkan layanan dan brand
+    //         if ($metodePembayaran == 'otomatis') {
+    //             $brandId = $get('id_brand');
+    //             $layanan = $get('layanan');
     
-                if ($brandId && $layanan) {
-                    $hargaLayanan = HargaLayanan::findOrFail($brandId);
+    //             if ($brandId && $layanan) {
+    //                 $hargaLayanan = HargaLayanan::findOrFail($brandId);
     
-                    // Mendapatkan harga dasar berdasarkan layanan yang dipilih
-                    $harga = match ($layanan) {
-                        '10 Mbps' => $hargaLayanan->harga_10mbps,
-                        '20 Mbps' => $hargaLayanan->harga_20mbps,
-                        '30 Mbps' => $hargaLayanan->harga_30mbps,
-                        '50 Mbps' => $hargaLayanan->harga_50mbps,
-                        default => 0,
-                    };
+    //                 // Mendapatkan harga dasar berdasarkan layanan yang dipilih
+    //                 $harga = match ($layanan) {
+    //                     '10 Mbps' => $hargaLayanan->harga_10mbps,
+    //                     '20 Mbps' => $hargaLayanan->harga_20mbps,
+    //                     '30 Mbps' => $hargaLayanan->harga_30mbps,
+    //                     '50 Mbps' => $hargaLayanan->harga_50mbps,
+    //                     default => 0,
+    //                 };
     
-                    // Menghitung pajak
-                    $pajak = ($hargaLayanan->pajak / 100) * $harga;
-                    $totalHarga = $harga + $pajak;
+    //                 // Menghitung pajak
+    //                 $pajak = ($hargaLayanan->pajak / 100) * $harga;
+    //                 $totalHarga = $harga + $pajak;
     
-                    // Debug - log nilai yang dihitung
-                    Log::info('Hitung Total Harga di Form', [
-                        'brand_id' => $brandId,
-                        'layanan' => $layanan, 
-                        'harga_dasar' => $harga,
-                        'pajak' => $pajak,
-                        'total_harga' => $totalHarga
-                    ]);
+    //                 // Debug - log nilai yang dihitung
+    //                 Log::info('Hitung Total Harga di Form', [
+    //                     'brand_id' => $brandId,
+    //                     'layanan' => $layanan, 
+    //                     'harga_dasar' => $harga,
+    //                     'pajak' => $pajak,
+    //                     'total_harga' => $totalHarga
+    //                 ]);
     
-                    // Set total harga jika memilih otomatis
-                    $set('total_harga_layanan_x_pajak', $totalHarga);
-                } else {
-                    // Log jika brand atau layanan belum dipilih
-                    Log::warning('Brand atau layanan belum dipilih', [
-                        'brand_id' => $brandId,
-                        'layanan' => $layanan
-                    ]);
+    //                 // Set total harga jika memilih otomatis
+    //                 $set('total_harga_layanan_x_pajak', $totalHarga);
+    //             } else {
+    //                 // Log jika brand atau layanan belum dipilih
+    //                 Log::warning('Brand atau layanan belum dipilih', [
+    //                     'brand_id' => $brandId,
+    //                     'layanan' => $layanan
+    //                 ]);
+    //             }
+    //         }
+    //     } catch (\Exception $e) {
+    //         Log::error('Gagal menghitung total harga', [
+    //             'error' => $e->getMessage(),
+    //             'metode_pembayaran' => $get('metode_pembayaran')
+    //         ]);
+    //     }
+    // }
+
+    // public static function updateTotalHarga(callable $set, callable $get)
+    // {
+    //     try {
+    //         $metodePembayaran = $get('metode_pembayaran');
+            
+    //         if ($metodePembayaran == 'otomatis') {
+    //             $brandId = $get('id_brand');
+    //             $layanan = $get('layanan');
+    
+    //             if ($brandId && $layanan) {
+    //                 $hargaLayanan = HargaLayanan::findOrFail($brandId);
+    
+    //                 // Penanganan khusus untuk Jelantik Nagrak (ajn-03)
+    //                 if ($brandId === 'ajn-03') {
+    //                     // Gunakan harga dari Jakinet (ajn-01)
+    //                     $jakinetHarga = HargaLayanan::where('id_brand', 'ajn-01')->first();
+                        
+    //                     if ($jakinetHarga) {
+    //                         $harga = match ($layanan) {
+    //                             '10 Mbps' => $jakinetHarga->harga_10mbps,
+    //                             '20 Mbps' => $jakinetHarga->harga_20mbps,
+    //                             '30 Mbps' => $jakinetHarga->harga_30mbps,
+    //                             '50 Mbps' => $jakinetHarga->harga_50mbps,
+    //                             default => 0,
+    //                         };
+                            
+    //                         $pajak = ($hargaLayanan->pajak / 100) * $harga;
+    //                         $total = $harga + $pajak;
+    //                         $totalBulat = ceil($total / 1000) * 1000;
+                            
+    //                         Log::info('Hitung Harga Jelantik Nagrak (menggunakan harga Jakinet)', [
+    //                             'brand_id' => $brandId,
+    //                             'layanan' => $layanan, 
+    //                             'harga_dasar' => $harga,
+    //                             'pajak' => $pajak,
+    //                             'total_bulat' => $totalBulat
+    //                         ]);
+                            
+    //                         $set('total_harga_layanan_x_pajak', $totalBulat);
+    //                         return;
+    //                     }
+    //                 }
+    
+    //                 // Perhitungan normal untuk brand lain
+    //                 $harga = match ($layanan) {
+    //                     '10 Mbps' => $hargaLayanan->harga_10mbps,
+    //                     '20 Mbps' => $hargaLayanan->harga_20mbps,
+    //                     '30 Mbps' => $hargaLayanan->harga_30mbps,
+    //                     '50 Mbps' => $hargaLayanan->harga_50mbps,
+    //                     default => 0,
+    //                 };
+    
+    //                 $pajak = ($hargaLayanan->pajak / 100) * $harga;
+    //                 $total = $harga + $pajak;
+    //                 $totalBulat = ceil($total / 1000) * 1000;
+    
+    //                 Log::info('Hitung Total Harga di Form', [
+    //                     'brand_id' => $brandId,
+    //                     'layanan' => $layanan, 
+    //                     'harga_dasar' => $harga,
+    //                     'pajak' => $pajak,
+    //                     'total_bulat' => $totalBulat
+    //                 ]);
+    
+    //                 $set('total_harga_layanan_x_pajak', $totalBulat);
+    //             } else {
+    //                 Log::warning('Brand atau layanan belum dipilih');
+    //             }
+    //         }
+    //     } catch (\Exception $e) {
+    //         Log::error('Gagal menghitung total harga', [
+    //             'error' => $e->getMessage()
+    //         ]);
+    //     }
+    // }
+
+
+
+
+    public static function updateTotalHarga(callable $set, callable $get)
+{
+    try {
+        $metodePembayaran = $get('metode_pembayaran');
+        
+        if ($metodePembayaran == 'otomatis') {
+            $brandId = $get('id_brand');
+            $layanan = $get('layanan');
+
+            if ($brandId && $layanan) {
+                $hargaLayanan = HargaLayanan::where('id_brand', $brandId)->first();
+                
+                if (!$hargaLayanan) {
+                    Log::error('Brand layanan tidak ditemukan', ['id_brand' => $brandId]);
+                    return;
                 }
+
+                // Mendapatkan harga dasar sesuai paket yang dipilih
+                $harga = match ($layanan) {
+                    '10 Mbps' => $hargaLayanan->harga_10mbps,
+                    '20 Mbps' => $hargaLayanan->harga_20mbps, 
+                    '30 Mbps' => $hargaLayanan->harga_30mbps,
+                    '50 Mbps' => $hargaLayanan->harga_50mbps,
+                    default => 0,
+                };
+
+                // Menghitung pajak dengan floor untuk menghindari angka berkoma
+                $pajak = floor(($hargaLayanan->pajak / 100) * $harga);
+                
+                // Hitung total tanpa langsung membulatkan
+                $total = $harga + $pajak;
+                
+                // Bulatkan ke atas ke kelipatan 1000
+                $totalBulat = ceil($total / 1000) * 1000;
+                
+                // Untuk harga Jakinet, bulatkan ke nilai khusus
+                if ($brandId === 'ajn-01') {
+                    if ($layanan === '10 Mbps') $totalBulat = 150000;
+                    else if ($layanan === '20 Mbps') $totalBulat = 220890;
+                    else if ($layanan === '30 Mbps') $totalBulat = 248640; 
+                    else if ($layanan === '50 Mbps') $totalBulat = 281940;
+                }
+                
+                // Untuk harga Jelantik, bulatkan ke nilai khusus
+                if ($brandId === 'ajn-02') {
+                    if ($layanan === '10 Mbps') $totalBulat = 166500;
+                    else if ($layanan === '20 Mbps') $totalBulat = 231990;
+                    else if ($layanan === '30 Mbps') $totalBulat = 276390;
+                    else if ($layanan === '50 Mbps') $totalBulat = 321789;
+                }
+
+                if ($brandId === 'ajn-03') {
+                    if ($layanan === '10 Mbps') $totalBulat = 150000;
+                    else if ($layanan === '20 Mbps') $totalBulat = 220890;
+                    else if ($layanan === '30 Mbps') $totalBulat = 248640; 
+                    else if ($layanan === '50 Mbps') $totalBulat = 281940;
+                }
+
+                Log::info('Hitung Total Harga di Form', [
+                    'brand_id' => $brandId,
+                    'layanan' => $layanan, 
+                    'harga_dasar' => $harga,
+                    'pajak_persen' => $hargaLayanan->pajak . '%',
+                    'pajak_nilai' => $pajak,
+                    'total_sebelum_pembulatan' => $total,
+                    'total_sesudah_pembulatan' => $totalBulat
+                ]);
+
+                $set('total_harga_layanan_x_pajak', $totalBulat);
+            } else {
+                Log::warning('Brand atau layanan belum dipilih');
             }
-        } catch (\Exception $e) {
-            Log::error('Gagal menghitung total harga', [
-                'error' => $e->getMessage(),
-                'metode_pembayaran' => $get('metode_pembayaran')
-            ]);
         }
+    } catch (\Exception $e) {
+        Log::error('Gagal menghitung total harga', [
+            'error' => $e->getMessage()
+        ]);
     }
+}
+
+
+
+
+
+
 
     /**
      * Definisi kolom tabel
@@ -243,9 +419,9 @@ class LanggananResource extends Resource
                     ->color('primary')
                     ->sortable(),
 
-                TextColumn::make('total_harga_layanan_x_pajak')
+                    TextColumn::make('total_harga_layanan_x_pajak')
                     ->label('Total Harga')
-                    ->money('IDR')
+                    ->formatStateUsing(fn ($state) => 'IDR ' . number_format((int)$state, 0, ',', '.'))
                     ->sortable(),
 
                 TextColumn::make('tgl_jatuh_tempo')
@@ -341,4 +517,60 @@ class LanggananResource extends Resource
             'edit' => Pages\EditLangganan::route('/{record}/edit'),
         ];
     }
+
+
+    /**
+     * Get the badge to display in the navigation.
+     * 
+     * @return string|null
+     */
+    public static function getNavigationBadge(): ?string
+    {
+        // Menghitung jumlah langganan yang statusnya "Suspend"
+        return static::getModel()::where('user_status', 'Suspend')->count();
+    }
+
+    /**
+     * Get the color of the badge to display in the navigation.
+     * 
+     * @return string|null
+     */
+    public static function getNavigationBadgeColor(): ?string
+    {
+        // Hitung jumlah langganan yang suspended
+        $suspendedCount = static::getModel()::where('user_status', 'Suspend')->count();
+        
+        // Logika warna berdasarkan jumlah langganan suspended
+        if ($suspendedCount === 0) {
+            return 'success'; // Hijau jika tidak ada yang suspended
+        } elseif ($suspendedCount < 5) {
+            return 'warning'; // Kuning jika jumlah suspended < 5
+        } elseif ($suspendedCount < 10) {
+            return 'danger'; // Merah jika jumlah suspended 5-9
+        } else {
+            return 'primary'; // Biru jika jumlah suspended >= 10
+        }
+    }
+
+    /**
+     * Get the tooltip for the badge in the navigation.
+     * 
+     * @return string|null
+     */
+    public static function getNavigationBadgeTooltip(): ?string
+    {
+        // Hitung langganan suspended dan aktif
+        $suspendedCount = static::getModel()::where('user_status', 'Suspend')->count();
+        $activeCount = static::getModel()::where('user_status', 'Aktif')->count();
+        $totalCount = static::getModel()::count();
+        
+        if ($suspendedCount === 0) {
+            return 'Semua langganan aktif';
+        } else {
+            return "{$activeCount} langganan aktif, {$suspendedCount} suspended dari total {$totalCount}";
+        }
+    }
+
+
 }
+

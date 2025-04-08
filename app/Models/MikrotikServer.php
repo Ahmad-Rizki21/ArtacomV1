@@ -57,4 +57,24 @@ class MikrotikServer extends Model
     // {
     //     return $this->hasMany(PppoeUser::class, 'server_id');
     // }
+
+    /**
+     * Get the metrics for this server
+     */
+    public function metrics()
+    {
+        return $this->hasMany(ServerMetric::class);
+    }
+
+    /**
+     * Get the latest metric for this server
+     */
+    public function latestMetric()
+    {
+        return $this->hasOne(ServerMetric::class)->latest();
+    }
+
+    
+
+
 }

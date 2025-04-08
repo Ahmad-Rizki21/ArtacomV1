@@ -9,10 +9,27 @@ use Maatwebsite\Excel\Concerns\WithHeadingRow;
 use Maatwebsite\Excel\Concerns\WithValidation;
 use Maatwebsite\Excel\Concerns\WithBatchInserts;
 use Maatwebsite\Excel\Concerns\WithChunkReading;
+use Maatwebsite\Excel\Concerns\WithPreparation;
 use Illuminate\Support\Facades\Log;
 
 class DataTeknisImport implements ToModel, WithHeadingRow, WithValidation, WithBatchInserts, WithChunkReading
 {
+    /**
+     * Prepare data before validation
+     */
+    public function prepareForValidation(array $row, int $index)
+    {
+        // Konversi data sebelum validasi
+        if (isset($row['id_pelanggan'])) {
+            $row['id_pelanggan'] = (string) $row['id_pelanggan'];
+        }
+        if (isset($row['id_vlan'])) {
+            $row['id_vlan'] = (string) $row['id_vlan'];
+        }
+        
+        return $row;
+    }
+
     /**
      * @param array $row
      *
@@ -34,8 +51,8 @@ class DataTeknisImport implements ToModel, WithHeadingRow, WithValidation, WithB
             // Pastikan id_vlan adalah string
             $idVlan = (string)$row['id_vlan'];
             
-            // Validasi dan format id_pelanggan
-            $idPelanggan = $row['id_pelanggan'];
+            // Validasi dan format id_pelanggan - konversi eksplisit ke string
+            $idPelanggan = (string)$row['id_pelanggan'];
             
             // Cari record yang sudah ada berdasarkan pelanggan_id atau id_pelanggan
             $existingRecord = DataTeknis::where(function($query) use ($row, $idPelanggan) {
@@ -123,8 +140,18 @@ class DataTeknisImport implements ToModel, WithHeadingRow, WithValidation, WithB
     {
         return [
             'pelanggan_id'      => 'required|exists:pelanggan,id',
-            'id_pelanggan'      => 'required|string|max:191',
-            'id_vlan'           => 'required',  // Hapus validasi string untuk fleksibilitas
+            'id_pelanggan'   => ['required', 'max:191', function ($attribute, $value, $fail) {
+                // Validasi kustom yang mengkonversi nilai ke string jika numerik
+                if (!is_string($value) && !is_numeric($value)) {
+                    $fail("Kolom {$attribute} harus berupa string atau angka.");
+                }
+            }],
+            'id_vlan'           => ['required', 'max:191', function ($attribute, $value, $fail) {
+                // Validasi kustom yang mengkonversi nilai ke string jika numerik
+                if (!is_string($value) && !is_numeric($value)) {
+                    $fail("Kolom {$attribute} harus berupa string atau angka.");
+                }
+            }],
             'password_pppoe'    => 'required|string|max:191',
             'ip_pelanggan'      => 'required|string|max:191',
             'profile_pppoe'     => 'required|string|max:191',

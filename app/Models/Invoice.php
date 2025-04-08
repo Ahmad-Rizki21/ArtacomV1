@@ -31,7 +31,8 @@ class Invoice extends Model
         'xendit_id',
         'xendit_external_id',
         'paid_amount',
-        'paid_at'
+        'paid_at',
+        'tgl_bayar'
     ];
 
     // Pastikan created_at dan updated_at dikelola dengan benar
@@ -40,6 +41,7 @@ class Invoice extends Model
         'tgl_invoice', 
         'tgl_jatuh_tempo', 
         'paid_at',
+        'tgl_bayar', // Tambahkan field baru
         'created_at',
         'updated_at'
     ];
@@ -77,6 +79,12 @@ class Invoice extends Model
             'status_invoice' => 'required|string'
         ];
     }
+
+    public function getPaidAtJakartaAttribute()
+{
+    return optional($this->paid_at)->setTimezone('Asia/Jakarta');
+}
+
 
     /**
      * Update status invoice dari Xendit
@@ -126,38 +134,91 @@ class Invoice extends Model
             'new_status' => $newStatus
         ]);
 
-        // Jika status invoice adalah 'Lunas' atau 'Selesai'
-        if (in_array($newStatus, ['Lunas', 'Selesai'])) {
-            // Ambil langganan terkait
-            $langganan = $this->langganan;
-            
-            if ($langganan) {
-                // Update tanggal jatuh tempo dan status langganan
-                // Format tanggal invoice ke format yang benar sebelum mengirimkannya
-                $tglInvoice = $this->tgl_invoice ? Carbon::parse($this->tgl_invoice)->format('Y-m-d') : null;
-                
-                Log::info('Mengirim data invoice untuk update langganan', [
-                    'invoice_number' => $this->invoice_number,
-                    'tanggal_invoice' => $tglInvoice
-                ]);
-                
-                $updated = $langganan->updateTanggalJatuhTempo($tglInvoice);
-                
-                Log::info('Hasil update langganan setelah pembayaran', [
-                    'invoice_number' => $this->invoice_number,
-                    'pelanggan_id' => $this->pelanggan_id,
-                    'tanggal_invoice' => $this->tgl_invoice,
-                    'updated' => $updated
-                ]);
-            } else {
-                Log::warning('Langganan tidak ditemukan untuk invoice ini', [
-                    'invoice_number' => $this->invoice_number,
-                    'pelanggan_id' => $this->pelanggan_id
-                ]);
-            }
-        }
+       // Jika status invoice adalah 'Lunas' atau 'Selesai'
+                    if (in_array($newStatus, ['Lunas', 'Selesai'])) {
+                        // Ambil langganan terkait
+                        $langganan = $this->langganan;
+                        
+                        if ($langganan) {
+                            // Periksa metode pembayaran dan ubah jika perlu
+                            if ($langganan->metode_pembayaran === 'manual') {
+                                // Ubah metode pembayaran ke otomatis
+                                $langganan->metode_pembayaran = 'otomatis';
+                                
+                                // Hitung ulang total harga berdasarkan tabel harga
+                                $hargaLayanan = HargaLayanan::find($langganan->id_brand);
+                                if ($hargaLayanan) {
+                                    $harga = match ($langganan->layanan) {
+                                        '10 Mbps' => $hargaLayanan->harga_10mbps,
+                                        '20 Mbps' => $hargaLayanan->harga_20mbps,
+                                        '30 Mbps' => $hargaLayanan->harga_30mbps,
+                                        '50 Mbps' => $hargaLayanan->harga_50mbps,
+                                        default => 0,
+                                    };
+                                    
+                                    // Set total harga sesuai dengan nilai yang sudah disepakati
+                                    if ($hargaLayanan->id_brand === 'ajn-01') { // Jakinet
+                                        if ($langganan->layanan === '10 Mbps') $total = 150000;
+                                        else if ($langganan->layanan === '20 Mbps') $total = 220890;
+                                        else if ($langganan->layanan === '30 Mbps') $total = 248640;
+                                        else if ($langganan->layanan === '50 Mbps') $total = 281940;
+                                    } else if ($hargaLayanan->id_brand === 'ajn-02') { // Jelantik
+                                        if ($langganan->layanan === '10 Mbps') $total = 166500;
+                                        else if ($langganan->layanan === '20 Mbps') $total = 231990;
+                                        else if ($langganan->layanan === '30 Mbps') $total = 276390;
+                                        else if ($langganan->layanan === '50 Mbps') $total = 321789;
+                                    } else if ($hargaLayanan->id_brand === 'ajn-03') { // Jalinet (Nagrak)
+                                        if ($langganan->layanan === '10 Mbps') $total = 150000;
+                                        else if ($langganan->layanan === '20 Mbps') $total = 220890;
+                                        else if ($langganan->layanan === '30 Mbps') $total = 248640;
+                                        else if ($langganan->layanan === '50 Mbps') $total = 281940;
+                                    } else {
+                                        // Untuk brand lain, gunakan formula standar
+                                        $pajak = floor(($hargaLayanan->pajak / 100) * $harga);
+                                        $total = $harga + $pajak;
+                                        $total = ceil($total / 1000) * 1000; // Bulatkan ke kelipatan 1000
+                                    }
+                                    
+                                    $langganan->total_harga_layanan_x_pajak = $total;
+                                }
+                                
+                                // Simpan perubahan
+                                $langganan->save();
+                                
+                                Log::info('Metode pembayaran diubah dari manual ke otomatis melalui Xendit', [
+                                    'invoice_number' => $this->invoice_number,
+                                    'pelanggan_id' => $this->pelanggan_id,
+                                    'total_harga_baru' => $langganan->total_harga_layanan_x_pajak
+                                ]);
+                            }
+                            
+                            // Update tanggal jatuh tempo dan status langganan
+                            // Format tanggal invoice ke format yang benar sebelum mengirimkannya
+                            $tglInvoice = $this->tgl_invoice ? Carbon::parse($this->tgl_invoice)->format('Y-m-d') : null;
+                            
+                            Log::info('Mengirim data invoice untuk update langganan', [
+                                'invoice_number' => $this->invoice_number,
+                                'tanggal_invoice' => $tglInvoice
+                            ]);
+                            
+                            $updated = $langganan->updateTanggalJatuhTempo($tglInvoice, $this->invoice_number);
+                            
+                            Log::info('Hasil update langganan setelah pembayaran', [
+                                'invoice_number' => $this->invoice_number,
+                                'pelanggan_id' => $this->pelanggan_id,
+                                'tanggal_invoice' => $this->tgl_invoice,
+                                'updated' => $updated,
+                                'metode_pembayaran' => $langganan->metode_pembayaran
+                            ]);
+                        } else {
+                            Log::warning('Langganan tidak ditemukan untuk invoice ini', [
+                                'invoice_number' => $this->invoice_number,
+                                'pelanggan_id' => $this->pelanggan_id
+                            ]);
+                        }
+                    }
 
-        return $this;
+                    return $this;
     }
 
     /**
@@ -356,46 +417,40 @@ class Invoice extends Model
     
         static::creating(function ($invoice) {
             Log::info('Creating Invoice: ', $invoice->toArray());
-
+    
             // Generate Nomor Invoice secara otomatis
             $invoice->invoice_number = 'INV-' . now()->format('Ymd') . '-' . rand(1000, 9999);
-
-            // Ambil ID Pelanggan dan data lainnya...
-            $dataTeknis = DataTeknis::where('pelanggan_id', $invoice->pelanggan_id)->first();
-            if ($dataTeknis) {
-                $invoice->id_pelanggan = $dataTeknis->id_pelanggan;
-            } else {
-                throw new \Exception('ID Pelanggan tidak ditemukan di Data Teknis.');
-            }
-
-            // Ambil `brand` dan tanggal jatuh tempo dari `langganan`
-            $langganan = Langganan::where('pelanggan_id', $invoice->pelanggan_id)->first();
-            if ($langganan) {
-                $invoice->brand = $langganan->id_brand;
-                $invoice->total_harga = $langganan->total_harga_layanan_x_pajak;
-                
-                // Gunakan tanggal jatuh tempo dari langganan jika tidak ada tanggal jatuh tempo yang diberikan
-                if (!$invoice->tgl_jatuh_tempo && $langganan->tgl_jatuh_tempo) {
+    
+            // Ambil data pelanggan dan set tanggal jatuh tempo
+            if ($invoice->pelanggan_id) {
+                // Ambil langganan untuk mendapatkan tanggal jatuh tempo
+                $langganan = Langganan::where('pelanggan_id', $invoice->pelanggan_id)->first();
+                if ($langganan && $langganan->tgl_jatuh_tempo) {
                     $invoice->tgl_jatuh_tempo = $langganan->tgl_jatuh_tempo;
-                } elseif (!$invoice->tgl_jatuh_tempo) {
+                } else {
                     // Jika tidak ada tanggal jatuh tempo di langganan, gunakan tanggal invoice
-                    $invoice->tgl_jatuh_tempo = $invoice->tgl_invoice;
+                    $invoice->tgl_jatuh_tempo = $invoice->tgl_invoice ?? now();
                 }
-            } else {
-                throw new \Exception('Brand tidak ditemukan untuk pelanggan ini.');
+    
+                // Ambil ID Pelanggan dari Data Teknis
+                $dataTeknis = DataTeknis::where('pelanggan_id', $invoice->pelanggan_id)->first();
+                if ($dataTeknis) {
+                    $invoice->id_pelanggan = $dataTeknis->id_pelanggan;
+                }
+    
+                // Ambil data pelanggan
+                $pelanggan = Pelanggan::find($invoice->pelanggan_id);
+                if ($pelanggan) {
+                    $invoice->no_telp = $pelanggan->no_telp;
+                    $invoice->email = $pelanggan->email;
+                }
+    
+                // Ambil brand dan total harga dari langganan
+                if ($langganan) {
+                    $invoice->brand = $langganan->id_brand;
+                    $invoice->total_harga = $langganan->total_harga_layanan_x_pajak;
+                }
             }
-
-            // Ambil `no_telp` dan `email` dari `pelanggan`
-            $pelanggan = Pelanggan::find($invoice->pelanggan_id);
-            if ($pelanggan) {
-                $invoice->no_telp = $pelanggan->no_telp;
-                $invoice->email = $pelanggan->email;
-            } else {
-                throw new \Exception('Nomor Telepon atau Email tidak ditemukan untuk pelanggan ini.');
-            }
-
-            // Set status awal
-            $invoice->status_invoice = 'Menunggu Pembayaran';
         
 
             // Tambahkan logika untuk menetapkan tanggal jatuh tempo
@@ -417,31 +472,86 @@ class Invoice extends Model
         });
         
         // Tambahkan listener untuk updated event
-        static::updated(function ($invoice) {
-            Log::info('Invoice Updated: ', [
-                'invoice_number' => $invoice->invoice_number,
-                'status' => $invoice->status_invoice
-            ]);
-            
-            // Jika status invoice berubah menjadi 'Lunas' atau 'Selesai'
-            if (in_array($invoice->status_invoice, ['Lunas', 'Selesai']) && 
-                !in_array($invoice->getOriginal('status_invoice'), ['Lunas', 'Selesai'])) {
-                
-                // Update status dan tanggal jatuh tempo langganan
-                $langganan = $invoice->langganan;
-                
-                if ($langganan) {
-                    $langganan->updateTanggalJatuhTempo();
-                    
-                    Log::info('Langganan diperbarui setelah invoice lunas', [
+                static::updated(function ($invoice) {
+                    Log::info('Invoice Updated: ', [
                         'invoice_number' => $invoice->invoice_number,
-                        'pelanggan_id' => $invoice->pelanggan_id,
-                        'status_langganan' => $langganan->user_status,
-                        'tgl_jatuh_tempo' => $langganan->tgl_jatuh_tempo
+                        'status' => $invoice->status_invoice
                     ]);
-                }
-            }
-        });
+                    
+                    // Jika status invoice berubah menjadi 'Lunas' atau 'Selesai'
+                    if (in_array($invoice->status_invoice, ['Lunas', 'Selesai']) && 
+                        !in_array($invoice->getOriginal('status_invoice'), ['Lunas', 'Selesai'])) {
+                        
+                        // Update status dan tanggal jatuh tempo langganan
+                        $langganan = $invoice->langganan;
+                        
+                        if ($langganan) {
+                            // Periksa metode pembayaran dan ubah jika manual
+                            if ($langganan->metode_pembayaran === 'manual') {
+                                // Ubah metode pembayaran ke otomatis
+                                $langganan->metode_pembayaran = 'otomatis';
+                                
+                                // Hitung ulang total harga berdasarkan tabel harga
+                                $hargaLayanan = HargaLayanan::find($langganan->id_brand);
+                                if ($hargaLayanan) {
+                                    $harga = match ($langganan->layanan) {
+                                        '10 Mbps' => $hargaLayanan->harga_10mbps,
+                                        '20 Mbps' => $hargaLayanan->harga_20mbps,
+                                        '30 Mbps' => $hargaLayanan->harga_30mbps,
+                                        '50 Mbps' => $hargaLayanan->harga_50mbps,
+                                        default => 0,
+                                    };
+                                    
+                                    // Set total harga sesuai dengan nilai yang sudah disepakati
+                                    if ($hargaLayanan->id_brand === 'ajn-01') { // Jakinet
+                                        if ($langganan->layanan === '10 Mbps') $total = 150000;
+                                        else if ($langganan->layanan === '20 Mbps') $total = 220890;
+                                        else if ($langganan->layanan === '30 Mbps') $total = 248640;
+                                        else if ($langganan->layanan === '50 Mbps') $total = 281940;
+                                    } else if ($hargaLayanan->id_brand === 'ajn-02') { // Jelantik
+                                        if ($langganan->layanan === '10 Mbps') $total = 166500;
+                                        else if ($langganan->layanan === '20 Mbps') $total = 231990;
+                                        else if ($langganan->layanan === '30 Mbps') $total = 276390;
+                                        else if ($langganan->layanan === '50 Mbps') $total = 321789;
+                                    } else if ($hargaLayanan->id_brand === 'ajn-03') { // Jalinet (Nagrak)
+                                        if ($langganan->layanan === '10 Mbps') $total = 150000;
+                                        else if ($langganan->layanan === '20 Mbps') $total = 220890;
+                                        else if ($langganan->layanan === '30 Mbps') $total = 248640;
+                                        else if ($langganan->layanan === '50 Mbps') $total = 281940;
+                                    } else {
+                                        // Untuk brand lain, gunakan formula standar
+                                        $pajak = floor(($hargaLayanan->pajak / 100) * $harga);
+                                        $total = $harga + $pajak;
+                                        $total = ceil($total / 1000) * 1000; // Bulatkan ke kelipatan 1000
+                                    }
+                                    
+                                    $langganan->total_harga_layanan_x_pajak = $total;
+                                }
+                                
+                                // Simpan perubahan
+                                $langganan->save();
+                                
+                                Log::info('Metode pembayaran diubah dari manual ke otomatis melalui event updated', [
+                                    'invoice_number' => $invoice->invoice_number,
+                                    'pelanggan_id' => $invoice->pelanggan_id,
+                                    'total_harga_baru' => $langganan->total_harga_layanan_x_pajak
+                                ]);
+                            }
+                            
+                            // Update tanggal jatuh tempo
+                            $formattedDate = $invoice->tgl_invoice ? Carbon::parse($invoice->tgl_invoice)->format('Y-m-d') : null;
+                            $langganan->updateTanggalJatuhTempo($formattedDate, $invoice->invoice_number);
+                            
+                            Log::info('Langganan diperbarui setelah invoice lunas', [
+                                'invoice_number' => $invoice->invoice_number,
+                                'pelanggan_id' => $invoice->pelanggan_id,
+                                'status_langganan' => $langganan->user_status,
+                                'tgl_jatuh_tempo' => $langganan->tgl_jatuh_tempo,
+                                'metode_pembayaran' => $langganan->metode_pembayaran
+                            ]);
+                        }
+                    }
+                });
     }
 
     // Relasi ke Pelanggan
@@ -468,33 +578,85 @@ class Invoice extends Model
         return $this->hasOne(HargaLayanan::class, 'id_brand', 'brand');
     }
     
-    /**
-     * Method untuk menangani pembayaran sukses
-     * Ini akan mengupdate status langganan dan tanggal jatuh tempo
-     */
-    public function handleSuccessfulPayment()
-    {
-        // Update status invoice menjadi Lunas jika belum
-        if ($this->status_invoice !== 'Lunas' && $this->status_invoice !== 'Selesai') {
-            $this->status_invoice = 'Lunas';
-            $this->save();
-        }
-        
-        // Update langganan
-        $langganan = $this->langganan;
-        
-        if ($langganan) {
-            // Format tanggal invoice ke format yang benar
-            $tglInvoice = $this->tgl_invoice ? Carbon::parse($this->tgl_invoice)->format('Y-m-d') : null;
-            
-            Log::info('Menangani pembayaran sukses', [
-                'invoice_number' => $this->invoice_number,
-                'tanggal_invoice' => $tglInvoice
-            ]);
-            
-            return $langganan->updateTanggalJatuhTempo($tglInvoice);
-        }
-        
-        return false;
-    }
+                /**
+             * Method untuk menangani pembayaran sukses
+             * Ini akan mengupdate status langganan dan tanggal jatuh tempo
+             */
+            public function handleSuccessfulPayment()
+            {
+                // Update status invoice menjadi Lunas jika belum
+                if ($this->status_invoice !== 'Lunas' && $this->status_invoice !== 'Selesai') {
+                    $this->status_invoice = 'Lunas';
+                    $this->save();
+                }
+                
+                // Update langganan
+                $langganan = $this->langganan;
+                
+                if ($langganan) {
+                    // Format tanggal invoice ke format yang benar
+                    $tglInvoice = $this->tgl_invoice ? Carbon::parse($this->tgl_invoice)->format('Y-m-d') : null;
+                    
+                    Log::info('Menangani pembayaran sukses', [
+                        'invoice_number' => $this->invoice_number,
+                        'tanggal_invoice' => $tglInvoice
+                    ]);
+                    
+                    // Cek apakah langganan menggunakan metode manual (prorate)
+                    if ($langganan->metode_pembayaran === 'manual') {
+                        // Ubah metode pembayaran ke otomatis
+                        $langganan->metode_pembayaran = 'otomatis';
+                        
+                        // Hitung ulang total harga berdasarkan tabel harga
+                        $hargaLayanan = HargaLayanan::find($langganan->id_brand);
+                        if ($hargaLayanan) {
+                            $harga = match ($langganan->layanan) {
+                                '10 Mbps' => $hargaLayanan->harga_10mbps,
+                                '20 Mbps' => $hargaLayanan->harga_20mbps,
+                                '30 Mbps' => $hargaLayanan->harga_30mbps,
+                                '50 Mbps' => $hargaLayanan->harga_50mbps,
+                                default => 0,
+                            };
+                            
+                            // Set total harga sesuai dengan nilai yang sudah disepakati
+                            if ($hargaLayanan->id_brand === 'ajn-01') { // Jakinet
+                                if ($langganan->layanan === '10 Mbps') $total = 150000;
+                                else if ($langganan->layanan === '20 Mbps') $total = 220890;
+                                else if ($langganan->layanan === '30 Mbps') $total = 248640;
+                                else if ($langganan->layanan === '50 Mbps') $total = 281940;
+                            } else if ($hargaLayanan->id_brand === 'ajn-02') { // Jelantik
+                                if ($langganan->layanan === '10 Mbps') $total = 166500;
+                                else if ($langganan->layanan === '20 Mbps') $total = 231990;
+                                else if ($langganan->layanan === '30 Mbps') $total = 276390;
+                                else if ($langganan->layanan === '50 Mbps') $total = 321789;
+                            } else if ($hargaLayanan->id_brand === 'ajn-03') { // Jalinet (Nagrak)
+                                if ($langganan->layanan === '10 Mbps') $total = 150000;
+                                else if ($langganan->layanan === '20 Mbps') $total = 220890;
+                                else if ($langganan->layanan === '30 Mbps') $total = 248640;
+                                else if ($langganan->layanan === '50 Mbps') $total = 281940;
+                            } else {
+                                // Untuk brand lain, gunakan formula standar
+                                $pajak = floor(($hargaLayanan->pajak / 100) * $harga);
+                                $total = $harga + $pajak;
+                                $total = ceil($total / 1000) * 1000; // Bulatkan ke kelipatan 1000
+                            }
+                            
+                            $langganan->total_harga_layanan_x_pajak = $total;
+                        }
+                        
+                        // Simpan perubahan
+                        $langganan->save();
+                        
+                        Log::info('Metode pembayaran diubah dari manual ke otomatis setelah pembayaran', [
+                            'invoice_number' => $this->invoice_number,
+                            'pelanggan_id' => $this->pelanggan_id,
+                            'total_harga_baru' => $langganan->total_harga_layanan_x_pajak
+                        ]);
+                    }
+                    
+                    return $langganan->updateTanggalJatuhTempo($tglInvoice, $this->invoice_number);
+                }
+                
+                return false;
+            }
 }
