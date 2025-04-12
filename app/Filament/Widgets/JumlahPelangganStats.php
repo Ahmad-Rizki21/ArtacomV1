@@ -5,14 +5,13 @@ namespace App\Filament\Widgets;
 use Filament\Widgets\StatsOverviewWidget as BaseWidget;
 use Filament\Widgets\StatsOverviewWidget\Stat;
 use Illuminate\Support\Facades\DB;
-use App\Models\MikrotikServer;
-use Leandrocfe\FilamentApexCharts\Widgets\ApexChartWidget;
 
 class JumlahPelangganStats extends BaseWidget
 {
+    // Polling interval untuk refresh data
     protected static ?string $pollingInterval = '60s';
     
-    // Mengatur tata letak kolom stat
+    // Mengatur tata letak kolom stat dengan lebih fleksibel
     protected function getStatsColumns(): int
     {
         return 3; // 3 kolom untuk stat
@@ -38,69 +37,53 @@ class JumlahPelangganStats extends BaseWidget
         // Total Jelantik (termasuk Nagrak)
         $totalJelantik = $jelantikCount + $jelantikNagrakCount;
 
-        // Statistik Mikrotik Server
-        $totalMikrotikServers = MikrotikServer::count();
-        $onlineServers = MikrotikServer::where('last_connection_status', 'success')->count();
-        $offlineServers = $totalMikrotikServers - $onlineServers;
-
-        // Data untuk chart pelanggan
-        $chartData = [
-            'Jakinet' => $jakinetCount,
-            'Jelantik' => $jelantikCount,
-            'Jelantik Nagrak' => $jelantikNagrakCount,
-        ];
-
         return [
             Stat::make('Jumlah Pelanggan Jakinet', $jakinetCount)
-                ->description('Jumlah pelanggan Jakinet')
-                ->descriptionIcon('heroicon-m-users')
+                ->description('Total Pelanggan Jakinet')
+                ->descriptionIcon('heroicon-m-user-group')
                 ->color('success')
-                ->chart($this->generateBrandChart([$jakinetCount, $jakinetCount*0.9, $jakinetCount*0.95, $jakinetCount*0.97, $jakinetCount]))
+                ->chart($this->generateTrendChart($jakinetCount))
                 ->chartColor('success'),
                 
             Stat::make('Jumlah Pelanggan Jelantik', $totalJelantik)
-                ->description('Jumlah pelanggan Jelantik (termasuk Rusun Nagrak)')
-                ->descriptionIcon('heroicon-m-users')
+                ->description('Total Pelanggan Jelantik')
+                ->descriptionIcon('heroicon-m-user-group')
                 ->color('primary')
-                ->chart($this->generateBrandChart([$totalJelantik*0.8, $totalJelantik*0.85, $totalJelantik*0.9, $totalJelantik*0.95, $totalJelantik]))
+                ->chart($this->generateTrendChart($totalJelantik))
                 ->chartColor('primary'),
                 
-            Stat::make('Mikrotik Servers', "$onlineServers / $totalMikrotikServers")
-                ->description('Online / Total Servers')
-                ->descriptionIcon('heroicon-m-server')
-                ->color($offlineServers > 0 ? 'danger' : 'success')
-                ->chart($this->generateServerStatusDonutChart($onlineServers, $offlineServers))
-                ->chartColor($offlineServers > 0 ? 'danger' : 'success')
+            Stat::make('Pelanggan Jelantik Nagrak', $jelantikNagrakCount)
+                ->description('Total Pelanggan Rusun Nagrak')
+                ->descriptionIcon('heroicon-m-building-office-2')
+                ->color('warning')
+                ->chart($this->generateTrendChart($jelantikNagrakCount))
+                ->chartColor('warning')
         ];
     }
     
     /**
-     * Generate chart brand pelanggan
+     * Generate trend chart dengan variasi lebih dinamis
      * 
-     * @param array $data
+     * @param int $baseValue
      * @return array
      */
-    protected function generateBrandChart(array $data): array
+    protected function generateTrendChart(int $baseValue): array
     {
-        return $data;
-    }
-    
-    /**
-     * Generate donut chart untuk status server menggunakan format ApexCharts
-     * 
-     * @param int $onlineServers
-     * @param int $offlineServers
-     * @return array
-     */
-    protected function generateServerStatusDonutChart(int $onlineServers, int $offlineServers): array
-    {
-        // Format ini sesuai dengan render preview chart di Stat
+        // Membuat trend chart dengan variasi yang lebih realistis
         return [
-            $offlineServers, $onlineServers, $onlineServers, $onlineServers, $onlineServers,
-            $onlineServers, $onlineServers, $onlineServers, $onlineServers, $onlineServers
+            $baseValue * 0.7,  // Titik awal yang lebih rendah
+            $baseValue * 0.8,  // Sedikit peningkatan
+            $baseValue * 0.9,  // Peningkatan lanjutan
+            $baseValue * 0.95, // Mendekati nilai sebenarnya
+            $baseValue         // Nilai aktual
         ];
     }
     
+    /**
+     * Mengatur prioritas widget
+     * 
+     * @return int
+     */
     public static function getSort(): int
     {
         return -4; // Prioritas tertinggi

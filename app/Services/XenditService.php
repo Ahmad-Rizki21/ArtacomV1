@@ -354,13 +354,13 @@ class XenditService
     }
 
     /**
-     * Siapkan payload untuk Xendit
-     *
-     * @param Invoice $invoice
-     * @param string|null $traceId
-     * @return array
-     */
-    private function prepareXenditPayload(Invoice $invoice, ?string $traceId = null): array
+ * Siapkan payload untuk Xendit
+ *
+ * @param Invoice $invoice
+ * @param string|null $traceId
+ * @return array
+ */
+private function prepareXenditPayload(Invoice $invoice, ?string $traceId = null): array
 {
     try {
         // Generate reference ID berdasarkan brand dan lokasi
@@ -378,20 +378,7 @@ class XenditService
         $itemName = "Layanan Internet";
         
         if ($langganan) {
-            // Hitung harga dasar (tanpa PPN)
-            $hargaDasar = round($invoice->total_harga / 1.11);
-            $ppn = $invoice->total_harga - $hargaDasar;
-            $hargaDasarFormatted = number_format($hargaDasar, 0, ',', '.');
-            $ppnFormatted = number_format($ppn, 0, ',', '.');
-            
-            // Tanggal jatuh tempo
-            $dueDateStr = '';
-            if (!empty($langganan->tgl_jatuh_tempo)) {
-                $dueDateObj = Carbon::parse($langganan->tgl_jatuh_tempo);
-                $dueDateStr = " - Jatuh tempo: " . $dueDateObj->format('d M Y');
-            }
-            
-            // Tentukan kecepatan berdasarkan harga
+            // Menentukan kecepatan
             $speed = '10';
             $brand = strtolower($invoice->brand);
             
@@ -403,7 +390,35 @@ class XenditService
                 }
             }
             
-            $itemName = "Layanan {$speed} Mbps (Harga: {$hargaDasarFormatted} IDR, Pajak: {$ppnFormatted} IDR){$dueDateStr}";
+            // Cek apakah ini invoice prorate
+            $isProrate = false;
+            if (!empty($invoice->description) && stripos($invoice->description, 'prorate') !== false) {
+                $isProrate = true;
+            } else {
+                $normalPrice = $this->getNormalPriceBySpeed($speed, $invoice->brand);
+                $priceDiff = abs($invoice->total_harga - $normalPrice);
+                if ($normalPrice > 0 && ($priceDiff / $normalPrice) > 0.05) {
+                    $isProrate = true;
+                }
+            }
+            
+            // Format item_name berdasarkan jenis invoice
+            $totalFormatted = number_format($invoice->total_harga, 0, ',', '.');
+            
+            if ($isProrate) {
+                // Untuk prorate, tidak perlu detail pajak dan tanggal jatuh tempo
+                $itemName = "Layanan {$speed} Mbps (Harga: {$totalFormatted} IDR)";
+            } else {
+                // Untuk bulanan, tampilkan dengan format lengkap
+                // Tanggal jatuh tempo
+                $dueDateStr = '';
+                if (!empty($langganan->tgl_jatuh_tempo)) {
+                    $dueDateObj = Carbon::parse($langganan->tgl_jatuh_tempo);
+                    $dueDateStr = " - Jatuh tempo: " . $dueDateObj->format('d M Y');
+                }
+                
+                $itemName = "Layanan {$speed} Mbps (Harga: {$totalFormatted} IDR){$dueDateStr}";
+            }
         }
         
         // Struktur payload yang sudah ada
@@ -445,6 +460,7 @@ class XenditService
         throw $e;
     }
 }
+
 
     /**
  * Format reference ID berdasarkan brand dan lokasi
@@ -603,23 +619,43 @@ private function generatePackageDescription(Invoice $invoice): string
             }
         }
         
-        // Tambahkan informasi tanggal jatuh tempo
-        $dueDate = '';
-        if (!empty($langganan->tgl_jatuh_tempo)) {
-            try {
-                $dueDateObj = Carbon::parse($langganan->tgl_jatuh_tempo);
-                $formattedDate = $dueDateObj->format('d/m/Y');
-                $dueDate = " jatuh tempo pembayaran tanggal {$formattedDate}";
-            } catch (Exception $e) {
-                Log::error('Error formatting due date', [
-                    'error' => $e->getMessage(),
-                    'langganan_id' => $langganan->id
-                ]);
+        // Cek apakah ini invoice prorate (pembayaran sebagian bulan)
+        $isProrate = false;
+        // Jika terdapat keterangan prorate pada invoice
+        if (!empty($invoice->description) && stripos($invoice->description, 'prorate') !== false) {
+            $isProrate = true;
+        }
+        // Atau jika total_harga tidak bulat sesuai paket biasanya (toleransi 5%)
+        else {
+            $normalPrice = $this->getNormalPriceBySpeed($speed, $invoice->brand);
+            $priceDiff = abs($invoice->total_harga - $normalPrice);
+            if ($normalPrice > 0 && ($priceDiff / $normalPrice) > 0.05) {
+                $isProrate = true;
             }
         }
         
-        // Format deskripsi sesuai contoh gambar kedua
-        return "Biaya berlangganan internet up to {$speed} Mbps{$dueDate}";
+        // Format deskripsi sesuai jenis invoice
+        if ($isProrate) {
+            // Untuk prorate, tidak perlu menampilkan tanggal jatuh tempo
+            return "Biaya berlangganan internet Up To {$speed} Mbps";
+        } else {
+            // Untuk bulanan, tambahkan informasi tanggal jatuh tempo
+            $dueDate = '';
+            if (!empty($langganan->tgl_jatuh_tempo)) {
+                try {
+                    $dueDateObj = Carbon::parse($langganan->tgl_jatuh_tempo);
+                    $formattedDate = $dueDateObj->format('d/m/Y');
+                    $dueDate = " jatuh tempo pembayaran tanggal {$formattedDate}";
+                } catch (Exception $e) {
+                    Log::error('Error formatting due date', [
+                        'error' => $e->getMessage(),
+                        'langganan_id' => $langganan->id
+                    ]);
+                }
+            }
+            
+            return "Biaya berlangganan internet up to {$speed} Mbps{$dueDate}";
+        }
     }
     
     // Default jika tidak bisa menentukan paket
@@ -629,6 +665,66 @@ private function generatePackageDescription(Invoice $invoice): string
     
     return "Biaya berlangganan internet";
 }
+
+
+    /**
+ * Helper untuk mendapatkan harga normal berdasarkan kecepatan
+ *
+ * @param string $speed
+ * @param string $brand
+ * @return float
+ */
+private function getNormalPriceBySpeed(string $speed, string $brand): float
+{
+    $brand = strtolower($brand);
+    $speed = (int)$speed;
+    
+    $priceMap = [
+        'ajn-01' => [ // Jakinet
+            10 => 150000,
+            20 => 220890,
+            30 => 248490,
+            50 => 281990,
+            100 => 330000,
+        ],
+        'ajn-02' => [ // Jelantik
+            10 => 166650,
+            20 => 231990,
+            30 => 276490,
+            50 => 321790,
+            100 => 400000,
+        ],
+        'ajn-03' => [ // Jelantik (Nagrak) - menggunakan harga Jakinet
+            10 => 150000,
+            20 => 220890,
+            30 => 248490,
+            50 => 281990,
+            100 => 330000,
+        ],
+    ];
+    
+    // Get closest speed if exact match doesn't exist
+    if (isset($priceMap[$brand])) {
+        $brandPrices = $priceMap[$brand];
+        if (isset($brandPrices[$speed])) {
+            return $brandPrices[$speed];
+        }
+        
+        // Find closest speed
+        $speeds = array_keys($brandPrices);
+        $closest = $speeds[0];
+        foreach ($speeds as $s) {
+            if (abs($speed - $s) < abs($speed - $closest)) {
+                $closest = $s;
+            }
+        }
+        return $brandPrices[$closest];
+    }
+    
+    return 0;
+}
+
+
 
     /**
      * Proses respons dari Xendit

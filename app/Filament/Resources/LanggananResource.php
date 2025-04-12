@@ -6,29 +6,29 @@ use App\Filament\Resources\LanggananResource\Pages;
 use App\Models\Langganan;
 use App\Models\Pelanggan;
 use App\Models\HargaLayanan;
-use Filament\Tables\Actions\Action;
-use Filament\Tables\Columns\IconColumn;
 use Filament\Forms\Form;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\DatePicker;
 use Filament\Forms\Components\Section;
 use Filament\Forms\Components\Grid;
-use Filament\Forms\Components\Card;
 use Filament\Forms\Components\Placeholder;
-use Filament\Forms\Components\Group;
 use Filament\Forms\Components\Fieldset;
 use Filament\Resources\Resource;
 use Filament\Tables\Table;
 use Filament\Tables\Columns\TextColumn;
-use Filament\Tables\Columns\BadgeColumn;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Actions\EditAction;
 use Filament\Tables\Actions\DeleteAction;
 use Filament\Tables\Actions\DeleteBulkAction;
-use Illuminate\Support\Facades\Log;
 use Filament\Tables\Actions\ViewAction;
 use Carbon\Carbon;
+use Illuminate\Support\HtmlString;
+use Filament\Notifications\Notification;
+use Filament\Notifications\Actions\Action as NotificationAction;
+use Illuminate\Validation\ValidationException;
+use Illuminate\Support\Facades\Log;
+use Filament\Tables\Actions\Action;
 
 class LanggananResource extends Resource
 {
@@ -36,7 +36,7 @@ class LanggananResource extends Resource
     protected static ?string $navigationLabel = 'Langganan / Paket';
     protected static ?string $navigationIcon = 'heroicon-o-wifi';
     protected static ?string $navigationGroup = 'FTTH';
-    protected static ?int $navigationSort = -2;
+    protected static ?int $navigationSort = -3;
     protected static ?string $slug = 'langganan';
     protected static ?string $modelLabel = 'Langganan';
     protected static ?string $pluralModelLabel = 'Daftar Langganan';
@@ -48,7 +48,6 @@ class LanggananResource extends Resource
     {
         return $form
             ->schema([
-                // Membuat bagian khusus untuk data pelanggan
                 Section::make('Informasi Pelanggan')
                     ->description('Pilih pelanggan dan brand layanan')
                     ->icon('heroicon-o-user')
@@ -63,31 +62,141 @@ class LanggananResource extends Resource
                                     ->preload()
                                     ->required()
                                     ->live()
-                                    ->afterStateUpdated(function ($state, callable $set) {
-                                        // Ambil data pelanggan
+                                    ->createOptionForm([
+                                        // Form untuk membuat pelanggan baru jika diperlukan
+                                    ])
+                                    ->rules([
+                                        function ($get) {
+                                            return function (string $attribute, $value, $fail) use ($get) {
+                                                if (!$value) {
+                                                    $fail('Pelanggan harus dipilih.');
+                                                    return;
+                                                }
+
+                                                // Saat edit, kita perlu mengabaikan validasi untuk record yang sedang diedit
+                                                $recordId = request()->route('record');
+
+                                                $query = Langganan::where('pelanggan_id', $value)
+                                                                ->where('user_status', 'Aktif'); // Diperbaiki dari 'status' ke 'user_status'
+
+                                                if ($recordId) {
+                                                    $query->where('id', '!=', $recordId);
+                                                }
+
+                                                if ($query->exists()) {
+                                                    $existingLangganan = $query->first();
+                                                    $pelanggan = Pelanggan::find($value);
+                                                    $namaPelanggan = $pelanggan ? $pelanggan->nama : 'ID #' . $value;
+                                                    $fail("Pelanggan {$namaPelanggan} sudah memiliki langganan aktif dengan ID #{$existingLangganan->id}. Satu pelanggan hanya boleh memiliki satu langganan aktif.");
+                                                }
+                                            };
+                                        }
+                                    ])
+                                    ->afterStateUpdated(function ($state, callable $set, callable $get) {
+                                        if (!$state) return;
+
+                                        // Cek apakah pelanggan sudah memiliki langganan (kecuali record yang sedang diedit)
+                                        $recordId = request()->route('record');
+                                        $query = Langganan::where('pelanggan_id', $state)
+                                                        ->where('user_status', 'Aktif'); // Diperbaiki dari 'status' ke 'user_status'
+
+                                        if ($recordId) {
+                                            $query->where('id', '!=', $recordId);
+                                        }
+
+                                        $existingLangganan = $query->first();
+
+                                        if ($existingLangganan) {
+                                            $pelanggan = Pelanggan::find($state);
+                                            $namaPelanggan = $pelanggan ? $pelanggan->nama : 'ID #' . $state;
+
+                                            Notification::make()
+                                                ->warning()
+                                                ->title('Pelanggan Sudah Memiliki Langganan')
+                                                ->body("Pelanggan {$namaPelanggan} sudah memiliki langganan aktif dengan ID #{$existingLangganan->id}. Silakan edit langganan yang sudah ada.")
+                                                ->persistent()
+                                                ->actions([
+                                                    NotificationAction::make('lihat')
+                                                        ->label('Lihat Langganan')
+                                                        ->url(self::getUrl('edit', ['record' => $existingLangganan->id]))
+                                                        ->button(),
+                                                ])
+                                                ->send();
+
+                                            // Reset pelanggan_id dan hentikan proses
+                                            $set('pelanggan_id', null);
+                                            throw ValidationException::withMessages([
+                                                'pelanggan_id' => ["Pelanggan {$namaPelanggan} sudah memiliki langganan aktif."],
+                                            ]);
+                                        }
+
+                                        // Jika tidak ada duplikasi, lanjutkan mengisi data otomatis
                                         $pelanggan = Pelanggan::find($state);
-                                        
-                                        // Set brand default dan harga jika pelanggan ditemukan
+
                                         if ($pelanggan) {
-                                            $set('id_brand', $pelanggan->brand_default ?? null);
+                                            if (!empty($pelanggan->id_brand)) {
+                                                $set('id_brand', $pelanggan->id_brand);
+                                                $brand = HargaLayanan::where('id_brand', $pelanggan->id_brand)->first();
+                                                if ($brand) {
+                                                    $set('brand_display', $brand->brand);
+                                                }
+                                            }
+
+                                            if (!empty($pelanggan->layanan)) {
+                                                $set('layanan', $pelanggan->layanan);
+                                                $set('layanan_display', $pelanggan->layanan);
+                                            }
+
+                                            if (!empty($pelanggan->id_brand) && !empty($pelanggan->layanan)) {
+                                                self::updateTotalHarga($set, $get);
+                                            }
                                         }
                                     }),
 
-                                Select::make('id_brand')
+                                TextInput::make('brand_display')
                                     ->label('Brand Layanan')
-                                    ->options(HargaLayanan::pluck('brand', 'id_brand'))
-                                    ->searchable()
-                                    ->preload()
-                                    ->required()
-                                    ->live()
-                                    ->afterStateUpdated(function ($state, callable $set) {
-                                        // Debugging untuk melihat nilai id_brand
-                                        Log::info('Selected Brand:', ['id_brand' => $state]);
-                                    }),
+                                    ->placeholder('Brand layanan akan otomatis terisi dari data pelanggan')
+                                    ->disabled()
+                                    ->dehydrated(false),
                             ]),
+
+                        TextInput::make('id_brand')
+                            ->hidden()
+                            ->dehydrated(),
+
+                        Placeholder::make('informasi_pelanggan')
+                            ->content(function (callable $get) {
+                                $pelangganId = $get('pelanggan_id');
+                                if (!$pelangganId) return 'Pilih pelanggan terlebih dahulu';
+
+                                $pelanggan = Pelanggan::find($pelangganId);
+                                if (!$pelanggan) return 'Pelanggan tidak ditemukan';
+
+                                $info = "<div class='text-sm space-y-1 mt-2'>";
+                                $info .= "<div><strong>Alamat:</strong> " . ($pelanggan->alamat == 'Lainnya' ? $pelanggan->alamat_custom : $pelanggan->alamat) . "</div>";
+                                $info .= "<div><strong>Blok/Unit:</strong> " . $pelanggan->blok . "/" . $pelanggan->unit . "</div>";
+                                $info .= "<div><strong>Kontak:</strong> " . $pelanggan->no_telp . " | " . $pelanggan->email . "</div>";
+
+                                if ($pelanggan->tgl_instalasi) {
+                                    $info .= "<div><strong>Tanggal Instalasi:</strong> " . Carbon::parse($pelanggan->tgl_instalasi)->format('d M Y') . "</div>";
+                                }
+
+                                if ($pelanggan->id_brand || $pelanggan->layanan) {
+                                    $info .= "<div class='mt-2 p-2 bg-blue-50 rounded-md border border-blue-200'>";
+                                    $info .= "<div class='font-medium text-blue-700'>Data Default Layanan:</div>";
+                                    $brandName = HargaLayanan::where('id_brand', $pelanggan->id_brand)->first()?->brand ?? $pelanggan->id_brand;
+                                    $info .= "<div><strong>Brand Default:</strong> " . $brandName . "</div>";
+                                    $info .= "<div><strong>Paket Default:</strong> " . ($pelanggan->layanan ?? 'Belum diatur') . "</div>";
+                                    $info .= "</div>";
+                                }
+
+                                $info .= "</div>";
+
+                                return new HtmlString($info);
+                            })
+                            ->columnSpan('full'),
                     ]),
 
-                // Bagian khusus untuk detail paket layanan
                 Section::make('Detail Paket Layanan')
                     ->description('Pilih paket dan metode pembayaran')
                     ->icon('heroicon-o-document-text')
@@ -95,19 +204,15 @@ class LanggananResource extends Resource
                         Grid::make()
                             ->columns(2)
                             ->schema([
-                                Select::make('layanan')
+                                TextInput::make('layanan_display')
                                     ->label('Paket Layanan')
-                                    ->options([
-                                        '10 Mbps' => '10 Mbps',
-                                        '20 Mbps' => '20 Mbps',
-                                        '30 Mbps' => '30 Mbps',
-                                        '50 Mbps' => '50 Mbps',
-                                    ])
-                                    ->required()
-                                    ->live()
-                                    ->afterStateUpdated(function ($state, callable $set, callable $get) {
-                                        self::updateTotalHarga($set, $get);
-                                    }),
+                                    ->placeholder('Paket layanan akan otomatis terisi dari data pelanggan')
+                                    ->disabled()
+                                    ->dehydrated(false),
+
+                                TextInput::make('layanan')
+                                    ->hidden()
+                                    ->dehydrated(),
 
                                 DatePicker::make('tgl_jatuh_tempo')
                                     ->label('Tanggal Jatuh Tempo')
@@ -116,54 +221,47 @@ class LanggananResource extends Resource
                                     ->closeOnDateSelection(),
                             ]),
 
-                        // Pembayaran dalam fieldset
                         Fieldset::make('Informasi Pembayaran')
                             ->schema([
                                 Grid::make()
                                     ->columns(2)
                                     ->schema([
                                         Select::make('metode_pembayaran')
-                                        ->label('Metode Pembayaran')
-                                        ->helperText('Otomatis untuk harga reguler, Manual untuk prorate')
-                                        ->options([
-                                            'otomatis' => 'Otomatis (Reguler)',
-                                            'manual' => 'Manual (Prorate)',
-                                        ])
-                                        ->required()
-                                        ->live()
-                                        ->default('otomatis')
-                                        ->afterStateUpdated(function ($state, callable $set, callable $get) {
-                                            if ($state == 'manual') {
-                                                // Reset nilai total jika memilih manual
-                                                $set('total_harga_layanan_x_pajak', null);
-                                            } else {
-                                                self::updateTotalHarga($set, $get);
-                                            }
-                                        }),
+                                            ->label('Metode Pembayaran')
+                                            ->helperText('Otomatis untuk harga reguler, Manual untuk prorate')
+                                            ->options([
+                                                'otomatis' => 'Otomatis (Reguler)',
+                                                'manual' => 'Manual (Prorate)',
+                                            ])
+                                            ->required()
+                                            ->live()
+                                            ->default('otomatis')
+                                            ->afterStateUpdated(function ($state, callable $set, callable $get) {
+                                                if ($state == 'manual') {
+                                                    $set('total_harga_layanan_x_pajak', null);
+                                                } else {
+                                                    self::updateTotalHarga($set, $get);
+                                                }
+                                            }),
 
-                                        
                                         TextInput::make('total_harga_layanan_x_pajak')
-                                        ->label('Total Harga (Termasuk Pajak)')
-                                        ->numeric()
-                                        ->prefix('Rp')
-                                        ->required(fn ($get) => $get('metode_pembayaran') == 'manual')
-                                        ->disabled(fn ($get) => $get('metode_pembayaran') == 'otomatis')
-                                        ->dehydrated(true) // Pastikan ini selalu true
-                                        ->afterStateHydrated(function ($state, callable $set, callable $get) {
-                                            // Pastikan nilai tidak diresett saat form diload ulang
-                                            if ($get('metode_pembayaran') == 'manual' && empty($state)) {
-                                                // Jangan set nilai apapun, biarkan kosong
-                                            } else if ($get('metode_pembayaran') == 'otomatis') {
-                                                self::updateTotalHarga($set, $get);
-                                            }
-                                        })
-                                        ->helperText(fn ($get) => $get('metode_pembayaran') == 'manual' 
-                                            ? 'Masukkan total harga termasuk pajak' 
-                                            : 'Harga dihitung otomatis berdasarkan paket')
-                                        ->placeholder('0'),
+                                            ->label('Total Harga (Termasuk Pajak)')
+                                            ->numeric()
+                                            ->prefix('Rp')
+                                            ->required(fn ($get) => $get('metode_pembayaran') == 'manual')
+                                            ->disabled(fn ($get) => $get('metode_pembayaran') == 'otomatis')
+                                            ->dehydrated(true)
+                                            ->afterStateHydrated(function ($state, callable $set, callable $get) {
+                                                if ($get('metode_pembayaran') == 'otomatis') {
+                                                    self::updateTotalHarga($set, $get);
+                                                }
+                                            })
+                                            ->helperText(fn ($get) => $get('metode_pembayaran') == 'manual' 
+                                                ? 'Masukkan total harga termasuk pajak' 
+                                                : 'Harga dihitung otomatis berdasarkan paket')
+                                            ->placeholder('0'),
                                     ]),
 
-                                // Informasi perhitungan harga (hanya ditampilkan saat otomatis)
                                 Placeholder::make('perhitungan_info')
                                     ->label('Informasi Perhitungan')
                                     ->content(fn ($get) => $get('metode_pembayaran') == 'otomatis' 
@@ -172,229 +270,133 @@ class LanggananResource extends Resource
                                     ->columnSpan(2),
                             ]),
                     ]),
+
+                Section::make('Informasi Detail Pelanggan')
+                    ->description('Data lengkap pelanggan')
+                    ->icon('heroicon-o-information-circle')
+                    ->collapsed()
+                    ->collapsible()
+                    ->schema([
+                        Placeholder::make('detail_pelanggan')
+                            ->content(function (callable $get) {
+                                $pelangganId = $get('pelanggan_id');
+                                if (!$pelangganId) return 'Pilih pelanggan terlebih dahulu';
+
+                                $pelanggan = Pelanggan::find($pelangganId);
+                                if (!$pelanggan) return 'Pelanggan tidak ditemukan';
+
+                                $info = "<div class='space-y-3'>";
+                                $info .= "<div class='p-3 bg-gray-50 rounded-lg border border-gray-200'>";
+                                $info .= "<div class='font-medium text-gray-700 mb-1'>Data Pribadi:</div>";
+                                $info .= "<div class='grid grid-cols-2 gap-2 text-sm'>";
+                                $info .= "<div><strong>Nama:</strong> {$pelanggan->nama}</div>";
+                                $info .= "<div><strong>No. KTP:</strong> {$pelanggan->no_ktp}</div>";
+                                $info .= "<div><strong>Email:</strong> {$pelanggan->email}</div>";
+                                $info .= "<div><strong>No. Telp:</strong> {$pelanggan->no_telp}</div>";
+                                $info .= "</div></div>";
+
+                                $info .= "<div class='p-3 bg-gray-50 rounded-lg border border-gray-200'>";
+                                $info .= "<div class='font-medium text-gray-700 mb-1'>Alamat:</div>";
+                                $info .= "<div class='text-sm'>";
+                                $info .= "<div><strong>Alamat:</strong> " . ($pelanggan->alamat === 'Lainnya' ? $pelanggan->alamat_custom : $pelanggan->alamat) . "</div>";
+                                $info .= "<div><strong>Blok/Unit:</strong> {$pelanggan->blok}/{$pelanggan->unit}</div>";
+                                if ($pelanggan->alamat_2) {
+                                    $info .= "<div><strong>Alamat Tambahan:</strong> {$pelanggan->alamat_2}</div>";
+                                }
+                                $info .= "</div></div>";
+
+                                if ($pelanggan->id_brand || $pelanggan->layanan) {
+                                    $info .= "<div class='p-3 bg-blue-50 rounded-lg border border-blue-200'>";
+                                    $info .= "<div class='font-medium text-blue-700 mb-1'>Data Default Layanan:</div>";
+                                    $info .= "<div class='text-sm space-y-1'>";
+                                    $brandName = HargaLayanan::where('id_brand', $pelanggan->id_brand)->first()?->brand ?? $pelanggan->id_brand;
+                                    $info .= "<div><strong>Brand Default:</strong> " . $brandName . "</div>";
+                                    $info .= "<div><strong>Paket Default:</strong> " . ($pelanggan->layanan ?? 'Belum diatur') . "</div>";
+                                    if ($pelanggan->tgl_instalasi) {
+                                        $info .= "<div><strong>Tanggal Instalasi:</strong> " . Carbon::parse($pelanggan->tgl_instalasi)->format('d M Y') . "</div>";
+                                    }
+                                    $info .= "</div></div>";
+                                }
+
+                                $info .= "</div>";
+
+                                return new HtmlString($info);
+                            }),
+                    ]),
             ]);
     }
 
-    /**
-     * Metode untuk menghitung total harga berdasarkan layanan dan brand
-     */
-    // public static function updateTotalHarga(callable $set, callable $get)
-    // {
-    //     try {
-    //         $metodePembayaran = $get('metode_pembayaran');
-            
-    //         // Jika memilih otomatis, hitung otomatis harga berdasarkan layanan dan brand
-    //         if ($metodePembayaran == 'otomatis') {
-    //             $brandId = $get('id_brand');
-    //             $layanan = $get('layanan');
-    
-    //             if ($brandId && $layanan) {
-    //                 $hargaLayanan = HargaLayanan::findOrFail($brandId);
-    
-    //                 // Mendapatkan harga dasar berdasarkan layanan yang dipilih
-    //                 $harga = match ($layanan) {
-    //                     '10 Mbps' => $hargaLayanan->harga_10mbps,
-    //                     '20 Mbps' => $hargaLayanan->harga_20mbps,
-    //                     '30 Mbps' => $hargaLayanan->harga_30mbps,
-    //                     '50 Mbps' => $hargaLayanan->harga_50mbps,
-    //                     default => 0,
-    //                 };
-    
-    //                 // Menghitung pajak
-    //                 $pajak = ($hargaLayanan->pajak / 100) * $harga;
-    //                 $totalHarga = $harga + $pajak;
-    
-    //                 // Debug - log nilai yang dihitung
-    //                 Log::info('Hitung Total Harga di Form', [
-    //                     'brand_id' => $brandId,
-    //                     'layanan' => $layanan, 
-    //                     'harga_dasar' => $harga,
-    //                     'pajak' => $pajak,
-    //                     'total_harga' => $totalHarga
-    //                 ]);
-    
-    //                 // Set total harga jika memilih otomatis
-    //                 $set('total_harga_layanan_x_pajak', $totalHarga);
-    //             } else {
-    //                 // Log jika brand atau layanan belum dipilih
-    //                 Log::warning('Brand atau layanan belum dipilih', [
-    //                     'brand_id' => $brandId,
-    //                     'layanan' => $layanan
-    //                 ]);
-    //             }
-    //         }
-    //     } catch (\Exception $e) {
-    //         Log::error('Gagal menghitung total harga', [
-    //             'error' => $e->getMessage(),
-    //             'metode_pembayaran' => $get('metode_pembayaran')
-    //         ]);
-    //     }
-    // }
-
-    // public static function updateTotalHarga(callable $set, callable $get)
-    // {
-    //     try {
-    //         $metodePembayaran = $get('metode_pembayaran');
-            
-    //         if ($metodePembayaran == 'otomatis') {
-    //             $brandId = $get('id_brand');
-    //             $layanan = $get('layanan');
-    
-    //             if ($brandId && $layanan) {
-    //                 $hargaLayanan = HargaLayanan::findOrFail($brandId);
-    
-    //                 // Penanganan khusus untuk Jelantik Nagrak (ajn-03)
-    //                 if ($brandId === 'ajn-03') {
-    //                     // Gunakan harga dari Jakinet (ajn-01)
-    //                     $jakinetHarga = HargaLayanan::where('id_brand', 'ajn-01')->first();
-                        
-    //                     if ($jakinetHarga) {
-    //                         $harga = match ($layanan) {
-    //                             '10 Mbps' => $jakinetHarga->harga_10mbps,
-    //                             '20 Mbps' => $jakinetHarga->harga_20mbps,
-    //                             '30 Mbps' => $jakinetHarga->harga_30mbps,
-    //                             '50 Mbps' => $jakinetHarga->harga_50mbps,
-    //                             default => 0,
-    //                         };
-                            
-    //                         $pajak = ($hargaLayanan->pajak / 100) * $harga;
-    //                         $total = $harga + $pajak;
-    //                         $totalBulat = ceil($total / 1000) * 1000;
-                            
-    //                         Log::info('Hitung Harga Jelantik Nagrak (menggunakan harga Jakinet)', [
-    //                             'brand_id' => $brandId,
-    //                             'layanan' => $layanan, 
-    //                             'harga_dasar' => $harga,
-    //                             'pajak' => $pajak,
-    //                             'total_bulat' => $totalBulat
-    //                         ]);
-                            
-    //                         $set('total_harga_layanan_x_pajak', $totalBulat);
-    //                         return;
-    //                     }
-    //                 }
-    
-    //                 // Perhitungan normal untuk brand lain
-    //                 $harga = match ($layanan) {
-    //                     '10 Mbps' => $hargaLayanan->harga_10mbps,
-    //                     '20 Mbps' => $hargaLayanan->harga_20mbps,
-    //                     '30 Mbps' => $hargaLayanan->harga_30mbps,
-    //                     '50 Mbps' => $hargaLayanan->harga_50mbps,
-    //                     default => 0,
-    //                 };
-    
-    //                 $pajak = ($hargaLayanan->pajak / 100) * $harga;
-    //                 $total = $harga + $pajak;
-    //                 $totalBulat = ceil($total / 1000) * 1000;
-    
-    //                 Log::info('Hitung Total Harga di Form', [
-    //                     'brand_id' => $brandId,
-    //                     'layanan' => $layanan, 
-    //                     'harga_dasar' => $harga,
-    //                     'pajak' => $pajak,
-    //                     'total_bulat' => $totalBulat
-    //                 ]);
-    
-    //                 $set('total_harga_layanan_x_pajak', $totalBulat);
-    //             } else {
-    //                 Log::warning('Brand atau layanan belum dipilih');
-    //             }
-    //         }
-    //     } catch (\Exception $e) {
-    //         Log::error('Gagal menghitung total harga', [
-    //             'error' => $e->getMessage()
-    //         ]);
-    //     }
-    // }
-
-
-
-
     public static function updateTotalHarga(callable $set, callable $get)
-{
-    try {
-        $metodePembayaran = $get('metode_pembayaran');
-        
-        if ($metodePembayaran == 'otomatis') {
-            $brandId = $get('id_brand');
-            $layanan = $get('layanan');
+    {
+        try {
+            $metodePembayaran = $get('metode_pembayaran');
 
-            if ($brandId && $layanan) {
-                $hargaLayanan = HargaLayanan::where('id_brand', $brandId)->first();
-                
-                if (!$hargaLayanan) {
-                    Log::error('Brand layanan tidak ditemukan', ['id_brand' => $brandId]);
-                    return;
+            if ($metodePembayaran == 'otomatis') {
+                $brandId = $get('id_brand');
+                $layanan = $get('layanan');
+
+                if ($brandId && $layanan) {
+                    $hargaLayanan = HargaLayanan::where('id_brand', $brandId)->first();
+
+                    if (!$hargaLayanan) {
+                        Log::error('Brand layanan tidak ditemukan', ['id_brand' => $brandId]);
+                        return;
+                    }
+
+                    $harga = match ($layanan) {
+                        '10 Mbps' => $hargaLayanan->harga_10mbps,
+                        '20 Mbps' => $hargaLayanan->harga_20mbps,
+                        '30 Mbps' => $hargaLayanan->harga_30mbps,
+                        '50 Mbps' => $hargaLayanan->harga_50mbps,
+                        default => 0,
+                    };
+
+                    $pajak = floor(($hargaLayanan->pajak / 100) * $harga);
+                    $total = $harga + $pajak;
+                    $totalBulat = ceil($total / 1000) * 1000;
+
+                    if ($brandId === 'ajn-01') {
+                        if ($layanan === '10 Mbps') $totalBulat = 150000;
+                        else if ($layanan === '20 Mbps') $totalBulat = 220890;
+                        else if ($layanan === '30 Mbps') $totalBulat = 248640;
+                        else if ($layanan === '50 Mbps') $totalBulat = 281940;
+                    }
+
+                    if ($brandId === 'ajn-02') {
+                        if ($layanan === '10 Mbps') $totalBulat = 166500;
+                        else if ($layanan === '20 Mbps') $totalBulat = 231990;
+                        else if ($layanan === '30 Mbps') $totalBulat = 276390;
+                        else if ($layanan === '50 Mbps') $totalBulat = 321789;
+                    }
+
+                    if ($brandId === 'ajn-03') {
+                        if ($layanan === '10 Mbps') $totalBulat = 150000;
+                        else if ($layanan === '20 Mbps') $totalBulat = 220890;
+                        else if ($layanan === '30 Mbps') $totalBulat = 248640;
+                        else if ($layanan === '50 Mbps') $totalBulat = 281940;
+                    }
+
+                    Log::info('Hitung Total Harga di Form', [
+                        'brand_id' => $brandId,
+                        'layanan' => $layanan,
+                        'harga_dasar' => $harga,
+                        'pajak_persen' => $hargaLayanan->pajak . '%',
+                        'pajak_nilai' => $pajak,
+                        'total_sebelum_pembulatan' => $total,
+                        'total_sesudah_pembulatan' => $totalBulat
+                    ]);
+
+                    $set('total_harga_layanan_x_pajak', $totalBulat);
+                } else {
+                    Log::warning('Brand atau layanan belum dipilih');
                 }
-
-                // Mendapatkan harga dasar sesuai paket yang dipilih
-                $harga = match ($layanan) {
-                    '10 Mbps' => $hargaLayanan->harga_10mbps,
-                    '20 Mbps' => $hargaLayanan->harga_20mbps, 
-                    '30 Mbps' => $hargaLayanan->harga_30mbps,
-                    '50 Mbps' => $hargaLayanan->harga_50mbps,
-                    default => 0,
-                };
-
-                // Menghitung pajak dengan floor untuk menghindari angka berkoma
-                $pajak = floor(($hargaLayanan->pajak / 100) * $harga);
-                
-                // Hitung total tanpa langsung membulatkan
-                $total = $harga + $pajak;
-                
-                // Bulatkan ke atas ke kelipatan 1000
-                $totalBulat = ceil($total / 1000) * 1000;
-                
-                // Untuk harga Jakinet, bulatkan ke nilai khusus
-                if ($brandId === 'ajn-01') {
-                    if ($layanan === '10 Mbps') $totalBulat = 150000;
-                    else if ($layanan === '20 Mbps') $totalBulat = 220890;
-                    else if ($layanan === '30 Mbps') $totalBulat = 248640; 
-                    else if ($layanan === '50 Mbps') $totalBulat = 281940;
-                }
-                
-                // Untuk harga Jelantik, bulatkan ke nilai khusus
-                if ($brandId === 'ajn-02') {
-                    if ($layanan === '10 Mbps') $totalBulat = 166500;
-                    else if ($layanan === '20 Mbps') $totalBulat = 231990;
-                    else if ($layanan === '30 Mbps') $totalBulat = 276390;
-                    else if ($layanan === '50 Mbps') $totalBulat = 321789;
-                }
-
-                if ($brandId === 'ajn-03') {
-                    if ($layanan === '10 Mbps') $totalBulat = 150000;
-                    else if ($layanan === '20 Mbps') $totalBulat = 220890;
-                    else if ($layanan === '30 Mbps') $totalBulat = 248640; 
-                    else if ($layanan === '50 Mbps') $totalBulat = 281940;
-                }
-
-                Log::info('Hitung Total Harga di Form', [
-                    'brand_id' => $brandId,
-                    'layanan' => $layanan, 
-                    'harga_dasar' => $harga,
-                    'pajak_persen' => $hargaLayanan->pajak . '%',
-                    'pajak_nilai' => $pajak,
-                    'total_sebelum_pembulatan' => $total,
-                    'total_sesudah_pembulatan' => $totalBulat
-                ]);
-
-                $set('total_harga_layanan_x_pajak', $totalBulat);
-            } else {
-                Log::warning('Brand atau layanan belum dipilih');
             }
+        } catch (\Exception $e) {
+            Log::error('Gagal menghitung total harga', [
+                'error' => $e->getMessage()
+            ]);
         }
-    } catch (\Exception $e) {
-        Log::error('Gagal menghitung total harga', [
-            'error' => $e->getMessage()
-        ]);
     }
-}
-
-
-
-
-
-
 
     /**
      * Definisi kolom tabel
@@ -419,7 +421,7 @@ class LanggananResource extends Resource
                     ->color('primary')
                     ->sortable(),
 
-                    TextColumn::make('total_harga_layanan_x_pajak')
+                TextColumn::make('total_harga_layanan_x_pajak')
                     ->label('Total Harga')
                     ->formatStateUsing(fn ($state) => 'IDR ' . number_format((int)$state, 0, ',', '.'))
                     ->sortable(),
@@ -493,7 +495,7 @@ class LanggananResource extends Resource
                     ->modalCancelActionLabel('Batal')
                     ->successNotificationTitle('🗑️ Pelanggan Berhasil Dihapus!')
                     ->after(function () {
-                        \Filament\Notifications\Notification::make()
+                        Notification::make()
                             ->success()
                             ->title('🗑️ Data Berlangganan Telah Dihapus!')
                             ->body('Pelanggan ini telah dihapus secara permanen.')
@@ -518,59 +520,45 @@ class LanggananResource extends Resource
         ];
     }
 
-
     /**
      * Get the badge to display in the navigation.
-     * 
-     * @return string|null
      */
     public static function getNavigationBadge(): ?string
     {
-        // Menghitung jumlah langganan yang statusnya "Suspend"
         return static::getModel()::where('user_status', 'Suspend')->count();
     }
 
     /**
      * Get the color of the badge to display in the navigation.
-     * 
-     * @return string|null
      */
     public static function getNavigationBadgeColor(): ?string
     {
-        // Hitung jumlah langganan yang suspended
         $suspendedCount = static::getModel()::where('user_status', 'Suspend')->count();
-        
-        // Logika warna berdasarkan jumlah langganan suspended
+
         if ($suspendedCount === 0) {
-            return 'success'; // Hijau jika tidak ada yang suspended
+            return 'success';
         } elseif ($suspendedCount < 5) {
-            return 'warning'; // Kuning jika jumlah suspended < 5
+            return 'warning';
         } elseif ($suspendedCount < 10) {
-            return 'danger'; // Merah jika jumlah suspended 5-9
+            return 'danger';
         } else {
-            return 'primary'; // Biru jika jumlah suspended >= 10
+            return 'primary';
         }
     }
 
     /**
      * Get the tooltip for the badge in the navigation.
-     * 
-     * @return string|null
      */
     public static function getNavigationBadgeTooltip(): ?string
     {
-        // Hitung langganan suspended dan aktif
         $suspendedCount = static::getModel()::where('user_status', 'Suspend')->count();
         $activeCount = static::getModel()::where('user_status', 'Aktif')->count();
         $totalCount = static::getModel()::count();
-        
+
         if ($suspendedCount === 0) {
             return 'Semua langganan aktif';
         } else {
             return "{$activeCount} langganan aktif, {$suspendedCount} suspended dari total {$totalCount}";
         }
     }
-
-
 }
-

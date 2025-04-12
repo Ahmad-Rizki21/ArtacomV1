@@ -63,6 +63,8 @@ class Kernel extends ConsoleKernel
         // \App\Console\Commands\MonitorSubscriptionStatus::class  // Daftarkan perintah di sini
         // ->everyMinute()
 
+        
+
                  
         // Uncomment ini untuk production nanti
         // $schedule->command('invoice:generate-due')

@@ -21,6 +21,17 @@ class Pelanggan extends Model
         'no_telp',
         'email',
         'alamat_2',
+        'alamat_custom',
+        'id_brand',        // Field untuk brand
+        'layanan',         // Field untuk paket layanan
+        'brand_default',   // Field untuk menyimpan brand default
+        'tgl_instalasi',   // Field baru untuk tanggal instalasi
+    ];
+    
+    protected $dates = [
+        'tgl_instalasi',  // Menetapkan field tanggal instalasi sebagai tipe date
+        'created_at',
+        'updated_at',
     ];
     
     // Mutator untuk memastikan nomor telepon selalu memiliki leading zero
@@ -39,6 +50,12 @@ class Pelanggan extends Model
         return strlen($value) > 1 ? $value : null;
     }
 
+    // Relasi ke HargaLayanan (baru)
+    public function hargaLayanan()
+    {
+        return $this->belongsTo(HargaLayanan::class, 'id_brand', 'id_brand');
+    }
+
     // Relasi lainnya tetap sama
     public function dataTeknis()
     {
@@ -51,10 +68,8 @@ class Pelanggan extends Model
     }
 
     public function setAlamat2Attribute($value)
-{
-    Log::info('Nilai alamat_2:', ['value' => $value]);
-    $this->attributes['alamat_2'] = $value;
-}
-
-
+    {
+        Log::info('Nilai alamat_2:', ['value' => $value]);
+        $this->attributes['alamat_2'] = $value;
+    }
 }

@@ -4,6 +4,7 @@ namespace App\Filament\Resources;
 
 use App\Filament\Resources\PelangganResource\Pages;
 use App\Models\Pelanggan;
+use App\Models\HargaLayanan;
 use Filament\Forms\Form;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Textarea;
@@ -11,7 +12,7 @@ use Filament\Forms\Components\Card;
 use Filament\Forms\Components\Section;
 use Filament\Forms\Components\Grid;
 use Filament\Forms\Components\Fieldset;
-use Filament\Forms\Components\Tabs;
+use Filament\Forms\Components\DatePicker;
 use Filament\Forms\Components\Placeholder;
 use Filament\Resources\Resource;
 use Filament\Tables\Table;
@@ -24,6 +25,7 @@ use Filament\Tables\Actions\DeleteAction;
 use Filament\Tables\Actions\ActionGroup;
 use Filament\Tables\Actions\DeleteBulkAction;
 use Illuminate\Support\HtmlString;
+use Illuminate\Support\Facades\Log;
 
 class PelangganResource extends Resource
 {
@@ -66,7 +68,7 @@ class PelangganResource extends Resource
                                     ->helperText('Nama sesuai KTP')
                                     ->columnSpan(1),
 
-                                    TextInput::make('no_telp')
+                                TextInput::make('no_telp')
                                     ->label('No. Telepon')
                                     ->required()
                                     ->maxLength(15)
@@ -82,6 +84,14 @@ class PelangganResource extends Resource
                                     ->maxLength(255)
                                     ->placeholder('Masukkan Email Aktif')
                                     ->helperText('Email yang aktif untuk komunikasi')
+                                    ->columnSpan(1),
+
+                                DatePicker::make('tgl_instalasi')
+                                    ->label('Tanggal Instalasi')
+                                    ->placeholder('Pilih tanggal instalasi')
+                                    ->helperText('Tanggal pemasangan internet')
+                                    ->displayFormat('d M Y')
+                                    ->closeOnDateSelection()
                                     ->columnSpan(1),
                             ]),
                     ]),
@@ -175,6 +185,54 @@ class PelangganResource extends Resource
                             ]),
                     ]),
 
+                // Bagian baru untuk informasi layanan
+                Section::make('Informasi Layanan')
+                    ->description('Data layanan internet pelanggan')
+                    ->icon('heroicon-o-wifi')
+                    ->schema([
+                        Grid::make(2)
+                            ->schema([
+                                Select::make('id_brand')
+                                    ->label('Brand Layanan')
+                                    ->options(HargaLayanan::pluck('brand', 'id_brand'))
+                                    ->searchable()
+                                    ->preload()
+                                    ->required()
+                                    ->reactive()
+                                    ->afterStateUpdated(function ($state, callable $set) {
+                                        // Simpan brand default untuk pelanggan ini
+                                        $set('brand_default', $state);
+                                        
+                                        // Log untuk debugging
+                                        Log::info('Brand Terpilih:', ['id_brand' => $state]);
+                                    }),
+
+                                Select::make('layanan')
+                                    ->label('Paket Layanan')
+                                    ->options([
+                                        '10 Mbps' => '10 Mbps',
+                                        '20 Mbps' => '20 Mbps',
+                                        '30 Mbps' => '30 Mbps', 
+                                        '50 Mbps' => '50 Mbps',
+                                    ])
+                                    ->required()
+                                    ->reactive(),
+                            ]),
+                        
+                        Placeholder::make('layanan_tips')
+                            ->content(new HtmlString('
+                                <div class="bg-blue-50 p-4 rounded-lg border border-blue-200">
+                                    <h3 class="text-blue-700 font-medium text-sm">Informasi Layanan:</h3>
+                                    <ul class="mt-2 text-sm text-blue-600 space-y-1 list-disc list-inside">
+                                        <li>Brand dan paket yang dipilih akan menjadi default saat membuat langganan baru</li>
+                                        <li>Pemilihan brand akan menentukan harga paket internet</li>
+                                        <li>Pelanggan dapat memiliki beberapa langganan dengan brand berbeda</li>
+                                    </ul>
+                                </div>
+                            '))
+                            ->columnSpan('full'),
+                    ]),
+
                 Placeholder::make('note')
                     ->content(new HtmlString('
                         <div class="p-4 rounded-lg border border-indigo-200 bg-indigo-50">
@@ -226,17 +284,29 @@ class PelangganResource extends Resource
                     ->limit(30)
                     ->tooltip(fn ($record) => $record->alamat === 'Lainnya' ? $record->alamat_custom : $record->alamat),
 
-                TextColumn::make('alamat_2')
-                    ->label('Alamat 2')
-                    ->limit(30)
-                    ->toggleable(),
-
                 TextColumn::make('blok')
                     ->label('Blok')
                     ->toggleable(),
 
                 TextColumn::make('unit')
                     ->label('Unit')
+                    ->toggleable(),
+
+                TextColumn::make('tgl_instalasi')
+                    ->label('Tanggal Instalasi')
+                    ->date('d M Y')
+                    ->sortable(),
+
+                TextColumn::make('hargaLayanan.brand')
+                    ->label('Brand')
+                    ->sortable()
+                    ->searchable()
+                    ->toggleable(),
+
+                TextColumn::make('layanan')
+                    ->label('Paket')
+                    ->sortable()
+                    ->searchable()
                     ->toggleable(),
 
                 TextColumn::make('no_telp')
@@ -252,6 +322,11 @@ class PelangganResource extends Resource
                     ->copyable()
                     ->toggleable()
                     ->tooltip(fn ($record) => $record->email),
+                
+                TextColumn::make('alamat_2')
+                    ->label('Alamat 2')
+                    ->limit(30)
+                    ->toggleable(isToggledHiddenByDefault: true),
                 
                 TextColumn::make('created_at')
                     ->label('Terdaftar Pada')
@@ -273,6 +348,21 @@ class PelangganResource extends Resource
                             });
                     })
                     ->indicator('Alamat'),
+                
+                SelectFilter::make('id_brand')
+                    ->label('Filter Brand')
+                    ->relationship('hargaLayanan', 'brand')
+                    ->indicator('Brand'),
+                
+                SelectFilter::make('layanan')
+                    ->label('Filter Paket')
+                    ->options([
+                        '10 Mbps' => '10 Mbps',
+                        '20 Mbps' => '20 Mbps',
+                        '30 Mbps' => '30 Mbps',
+                        '50 Mbps' => '50 Mbps',
+                    ])
+                    ->indicator('Paket'),
             ])
             ->actions([
                 ActionGroup::make([

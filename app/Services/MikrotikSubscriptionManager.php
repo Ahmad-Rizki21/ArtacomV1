@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Langganan;
 use App\Models\MikrotikServer;
+use App\Models\Invoice;
 use Illuminate\Support\Facades\Log;
 use Carbon\Carbon;
 
@@ -20,7 +21,7 @@ class MikrotikSubscriptionManager
      * Handle subscription status updates based on payment status
      * 
      * @param Langganan $langganan
-     * @param string $action (suspend|activate)
+     * @param string $action (suspend|activate|auto)
      * @return bool
      */
     public function handleSubscriptionStatus(Langganan $langganan, string $action = 'auto')
@@ -36,7 +37,7 @@ class MikrotikSubscriptionManager
             return false;
         }
 
-        // Tentukan aksi berdasarkan status
+        // Tentukan aksi berdasarkan status jika auto
         if ($action === 'auto') {
             $action = ($langganan->user_status === 'Aktif') ? 'activate' : 'suspend';
         }
@@ -153,96 +154,23 @@ class MikrotikSubscriptionManager
     }
 
     /**
-     * Ekstrak suffix dari profile (misal dari 20Mbps-u, ambil 'u')
-     */
-    protected function extractProfileSuffix(string $profile): string
-    {
-        if (preg_match('/\d+Mbps-([a-z])/i', $profile, $matches)) {
-            return strtolower($matches[1]);
-        }
-        return 'a'; // default suffix diubah ke 'a' sesuai standard
-    }
-
-    /**
-     * Tentukan profile berdasarkan kecepatan layanan
-     */
-    protected function determineProfileFromSpeed(string $layanan, string $suffix = 'a'): string
-    {
-        // Pastikan suffix valid
-        $suffix = strtolower(substr($suffix, 0, 1));
-        if (!preg_match('/[a-z]/', $suffix)) {
-            $suffix = 'a';
-        }
-
-        return match ($layanan) {
-            '10 Mbps' => "10Mbps-{$suffix}",
-            '20 Mbps' => "20Mbps-{$suffix}",
-            '30 Mbps' => "30Mbps-{$suffix}",
-            '50 Mbps' => "50Mbps-{$suffix}",
-            default => "20Mbps-{$suffix}" // Default ke 20Mbps
-        };
-    }
-
-    /**
-     * Proses langganan yang sudah melewati tanggal jatuh tempo
-     */
-    public function processPastDueSubscriptions()
-    {
-        $now = Carbon::now();
-        $count = 0;
-        
-        // Cari langganan yang sudah lewat tanggal jatuh tempo
-        $pastDueSubscriptions = Langganan::where('tgl_jatuh_tempo', '<', $now->format('Y-m-d'))
-            ->where('user_status', 'Aktif')
-            ->get();
-        
-        Log::info('Checking past due subscriptions', [
-            'current_date' => $now->format('Y-m-d'),
-            'found_subscriptions' => $pastDueSubscriptions->count()
-        ]);
-            
-        foreach ($pastDueSubscriptions as $langganan) {
-            // Update status di database
-            $langganan->user_status = 'Suspend';
-            $langganan->save();
-            
-            Log::info('Suspending past due subscription', [
-                'pelanggan_id' => $langganan->pelanggan_id,
-                'id_pelanggan' => $langganan->id_pelanggan,
-                'tgl_jatuh_tempo' => $langganan->tgl_jatuh_tempo
-            ]);
-            
-            // Update di Mikrotik
-            if ($this->handleSubscriptionStatus($langganan, 'suspend')) {
-                $count++;
-            }
-        }
-        
-        Log::info('Langganan yang sudah jatuh tempo diproses', [
-            'total' => $pastDueSubscriptions->count(),
-            'suspended' => $count
-        ]);
-        
-        return $count;
-    }
-    
-    /**
      * Sinkronisasi status di Mikrotik
      */
     public function syncMikrotikStatus(Langganan $langganan)
     {
-        $idPelanggan = optional($langganan->pelanggan->dataTeknis)->id_pelanggan;
+        $dataTeknis = optional($langganan->pelanggan)->dataTeknis;
         
-        if (empty($idPelanggan)) {
-            Log::warning('Tidak dapat sinkronisasi status Mikrotik: ID Pelanggan kosong', [
-                'pelanggan_id' => $langganan->pelanggan_id
+        if (!$dataTeknis || empty($dataTeknis->id_pelanggan)) {
+            Log::warning('Tidak dapat sinkronisasi status Mikrotik: Data teknis atau ID Pelanggan kosong', [
+                'pelanggan_id' => $langganan->pelanggan_id,
+                'has_data_teknis' => $dataTeknis ? 'Ya' : 'Tidak'
             ]);
             return false;
         }
         
         Log::info('Sinkronisasi status Mikrotik', [
             'pelanggan_id' => $langganan->pelanggan_id,
-            'id_pelanggan' => $idPelanggan,
+            'id_pelanggan' => $dataTeknis->id_pelanggan,
             'status' => $langganan->user_status
         ]);
         
@@ -250,5 +178,82 @@ class MikrotikSubscriptionManager
         return $langganan->user_status === 'Aktif' 
             ? $this->handleSubscriptionStatus($langganan, 'activate')
             : $this->handleSubscriptionStatus($langganan, 'suspend');
+    }
+    
+    /**
+     * Proses langganan yang jatuh tempo hari ini
+     * 
+     * @return array Statistik hasil proses
+     */
+    public function processDueDateSubscriptions()
+    {
+        $today = Carbon::now()->format('Y-m-d');
+        $stats = [
+            'total' => 0,
+            'suspended' => 0,
+            'skipped' => 0,
+            'errors' => 0
+        ];
+        
+        Log::info('Memproses langganan jatuh tempo hari ini', [
+            'date' => $today
+        ]);
+        
+        // Ambil langganan yang jatuh tempo tepat hari ini dan masih aktif
+        $dueSubscriptions = Langganan::where('tgl_jatuh_tempo', $today)
+            ->where('user_status', 'Aktif')
+            ->get();
+        
+        $stats['total'] = $dueSubscriptions->count();
+        
+        Log::info('Ditemukan langganan jatuh tempo hari ini', [
+            'count' => $stats['total'],
+            'date' => $today
+        ]);
+            
+        foreach ($dueSubscriptions as $langganan) {
+            // Cek apakah ada invoice yang belum dibayar untuk bulan ini
+            $hasUnpaidInvoice = Invoice::where('pelanggan_id', $langganan->pelanggan_id)
+                ->whereMonth('tgl_invoice', Carbon::now()->month)
+                ->whereYear('tgl_invoice', Carbon::now()->year)
+                ->where('status_invoice', 'Menunggu Pembayaran')
+                ->exists();
+                
+            if (!$hasUnpaidInvoice) {
+                $stats['skipped']++;
+                Log::info('Pelanggan tidak memiliki invoice yang belum dibayar bulan ini, dilewati', [
+                    'pelanggan_id' => $langganan->pelanggan_id
+                ]);
+                continue;
+            }
+            
+            try {
+                // Update status di database
+                $langganan->user_status = 'Suspend';
+                $langganan->save();
+                
+                Log::info('Mensuspend pelanggan jatuh tempo hari ini', [
+                    'pelanggan_id' => $langganan->pelanggan_id,
+                    'tgl_jatuh_tempo' => $langganan->tgl_jatuh_tempo
+                ]);
+                
+                // Update di Mikrotik
+                if ($this->handleSubscriptionStatus($langganan, 'suspend')) {
+                    $stats['suspended']++;
+                } else {
+                    $stats['errors']++;
+                }
+            } catch (\Exception $e) {
+                $stats['errors']++;
+                Log::error('Gagal suspend pelanggan jatuh tempo', [
+                    'pelanggan_id' => $langganan->pelanggan_id,
+                    'error' => $e->getMessage()
+                ]);
+            }
+        }
+        
+        Log::info('Proses langganan jatuh tempo selesai', $stats);
+        
+        return $stats;
     }
 }

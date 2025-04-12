@@ -20,6 +20,7 @@ class DataTeknis extends Model
         'otb',
         'odc',
         'odp',
+        'speedtest_proof',
         'onu_power',
     ];
 

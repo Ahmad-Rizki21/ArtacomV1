@@ -74,7 +74,7 @@ class InvoiceResource extends Resource
                                 
                                     // Inside InvoiceResource.php, modify the DatePicker for tgl_jatuh_tempo
                                     DatePicker::make('tgl_jatuh_tempo')
-                                ->label('Tanggal Jatuh Tempo')
+                                ->label('Periode Pembayaran')
                                 ->required()
                                 ->disabled()
                                 ->dehydrated()
@@ -91,7 +91,7 @@ class InvoiceResource extends Resource
                                     // Fallback to invoice date if no subscription due date
                                     return $get('tgl_invoice') ?? now();
                                 })
-                                ->helperText('Tanggal jatuh tempo diambil otomatis dari data langganan'),
+                                ->helperText('Periode Pembayaran diambil otomatis dari data langganan'),
                         ]),
                     ]),
                 
@@ -310,8 +310,8 @@ class InvoiceResource extends Resource
                     ->sortable(),
 
                 TextColumn::make('tgl_jatuh_tempo')
-                    ->label('Tanggal Jatuh Tempo')
-                    ->date('d M Y')
+                    ->label('Periode Pembayaran')
+                    ->date('M Y')
                     ->sortable()
                     ->color(fn ($record) => 
                         Carbon::parse($record->tgl_jatuh_tempo)->isPast() && 

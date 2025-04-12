@@ -3,10 +3,10 @@
 namespace App\Policies;
 
 use App\Models\User;
-use App\Models\MikrotikServer;
+use Croustibat\FilamentJobsMonitor\Models\QueueMonitor;
 use Illuminate\Auth\Access\HandlesAuthorization;
 
-class MikrotikServerPolicy
+class QueueMonitorPolicy
 {
     use HandlesAuthorization;
 
@@ -15,15 +15,15 @@ class MikrotikServerPolicy
      */
     public function viewAny(User $user): bool
     {
-        return $user->can('view_any_server::monitoring');
+        return $user->can('view_any_queue::monitor');
     }
 
     /**
      * Determine whether the user can view the model.
      */
-    public function view(User $user, MikrotikServer $mikrotikServer): bool
+    public function view(User $user, QueueMonitor $queueMonitor): bool
     {
-        return $user->can('view_server::monitoring');
+        return $user->can('view_queue::monitor');
     }
 
     /**
@@ -31,23 +31,23 @@ class MikrotikServerPolicy
      */
     public function create(User $user): bool
     {
-        return $user->can('create_server::monitoring');
+        return $user->can('create_queue::monitor');
     }
 
     /**
      * Determine whether the user can update the model.
      */
-    public function update(User $user, MikrotikServer $mikrotikServer): bool
+    public function update(User $user, QueueMonitor $queueMonitor): bool
     {
-        return $user->can('update_server::monitoring');
+        return $user->can('update_queue::monitor');
     }
 
     /**
      * Determine whether the user can delete the model.
      */
-    public function delete(User $user, MikrotikServer $mikrotikServer): bool
+    public function delete(User $user, QueueMonitor $queueMonitor): bool
     {
-        return $user->can('delete_server::monitoring');
+        return $user->can('delete_queue::monitor');
     }
 
     /**
@@ -55,15 +55,15 @@ class MikrotikServerPolicy
      */
     public function deleteAny(User $user): bool
     {
-        return $user->can('delete_any_server::monitoring');
+        return $user->can('delete_any_queue::monitor');
     }
 
     /**
      * Determine whether the user can permanently delete.
      */
-    public function forceDelete(User $user, MikrotikServer $mikrotikServer): bool
+    public function forceDelete(User $user, QueueMonitor $queueMonitor): bool
     {
-        return $user->can('force_delete_server::monitoring');
+        return $user->can('force_delete_queue::monitor');
     }
 
     /**
@@ -71,15 +71,15 @@ class MikrotikServerPolicy
      */
     public function forceDeleteAny(User $user): bool
     {
-        return $user->can('force_delete_any_server::monitoring');
+        return $user->can('force_delete_any_queue::monitor');
     }
 
     /**
      * Determine whether the user can restore.
      */
-    public function restore(User $user, MikrotikServer $mikrotikServer): bool
+    public function restore(User $user, QueueMonitor $queueMonitor): bool
     {
-        return $user->can('restore_server::monitoring');
+        return $user->can('restore_queue::monitor');
     }
 
     /**
@@ -87,15 +87,15 @@ class MikrotikServerPolicy
      */
     public function restoreAny(User $user): bool
     {
-        return $user->can('restore_any_server::monitoring');
+        return $user->can('restore_any_queue::monitor');
     }
 
     /**
      * Determine whether the user can replicate.
      */
-    public function replicate(User $user, MikrotikServer $mikrotikServer): bool
+    public function replicate(User $user, QueueMonitor $queueMonitor): bool
     {
-        return $user->can('replicate_server::monitoring');
+        return $user->can('replicate_queue::monitor');
     }
 
     /**
@@ -103,6 +103,6 @@ class MikrotikServerPolicy
      */
     public function reorder(User $user): bool
     {
-        return $user->can('reorder_server::monitoring');
+        return $user->can('reorder_queue::monitor');
     }
 }
