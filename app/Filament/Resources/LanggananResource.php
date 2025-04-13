@@ -56,102 +56,69 @@ class LanggananResource extends Resource
                             ->columns(2)
                             ->schema([
                                 Select::make('pelanggan_id')
-                                    ->label('Nama Pelanggan')
-                                    ->relationship('pelanggan', 'nama')
-                                    ->searchable()
-                                    ->preload()
-                                    ->required()
-                                    ->live()
-                                    ->createOptionForm([
-                                        // Form untuk membuat pelanggan baru jika diperlukan
-                                    ])
-                                    ->rules([
-                                        function ($get) {
-                                            return function (string $attribute, $value, $fail) use ($get) {
-                                                if (!$value) {
-                                                    $fail('Pelanggan harus dipilih.');
-                                                    return;
-                                                }
-
-                                                // Saat edit, kita perlu mengabaikan validasi untuk record yang sedang diedit
-                                                $recordId = request()->route('record');
-
-                                                $query = Langganan::where('pelanggan_id', $value)
-                                                                ->where('user_status', 'Aktif'); // Diperbaiki dari 'status' ke 'user_status'
-
-                                                if ($recordId) {
-                                                    $query->where('id', '!=', $recordId);
-                                                }
-
-                                                if ($query->exists()) {
-                                                    $existingLangganan = $query->first();
-                                                    $pelanggan = Pelanggan::find($value);
-                                                    $namaPelanggan = $pelanggan ? $pelanggan->nama : 'ID #' . $value;
-                                                    $fail("Pelanggan {$namaPelanggan} sudah memiliki langganan aktif dengan ID #{$existingLangganan->id}. Satu pelanggan hanya boleh memiliki satu langganan aktif.");
-                                                }
-                                            };
-                                        }
-                                    ])
-                                    ->afterStateUpdated(function ($state, callable $set, callable $get) {
-                                        if (!$state) return;
-
-                                        // Cek apakah pelanggan sudah memiliki langganan (kecuali record yang sedang diedit)
-                                        $recordId = request()->route('record');
-                                        $query = Langganan::where('pelanggan_id', $state)
-                                                        ->where('user_status', 'Aktif'); // Diperbaiki dari 'status' ke 'user_status'
-
-                                        if ($recordId) {
-                                            $query->where('id', '!=', $recordId);
-                                        }
-
-                                        $existingLangganan = $query->first();
-
-                                        if ($existingLangganan) {
-                                            $pelanggan = Pelanggan::find($state);
-                                            $namaPelanggan = $pelanggan ? $pelanggan->nama : 'ID #' . $state;
-
-                                            Notification::make()
-                                                ->warning()
-                                                ->title('Pelanggan Sudah Memiliki Langganan')
-                                                ->body("Pelanggan {$namaPelanggan} sudah memiliki langganan aktif dengan ID #{$existingLangganan->id}. Silakan edit langganan yang sudah ada.")
-                                                ->persistent()
-                                                ->actions([
-                                                    NotificationAction::make('lihat')
-                                                        ->label('Lihat Langganan')
-                                                        ->url(self::getUrl('edit', ['record' => $existingLangganan->id]))
-                                                        ->button(),
-                                                ])
-                                                ->send();
-
-                                            // Reset pelanggan_id dan hentikan proses
-                                            $set('pelanggan_id', null);
-                                            throw ValidationException::withMessages([
-                                                'pelanggan_id' => ["Pelanggan {$namaPelanggan} sudah memiliki langganan aktif."],
-                                            ]);
-                                        }
-
-                                        // Jika tidak ada duplikasi, lanjutkan mengisi data otomatis
-                                        $pelanggan = Pelanggan::find($state);
-
-                                        if ($pelanggan) {
-                                            if (!empty($pelanggan->id_brand)) {
-                                                $set('id_brand', $pelanggan->id_brand);
-                                                $brand = HargaLayanan::where('id_brand', $pelanggan->id_brand)->first();
-                                                if ($brand) {
-                                                    $set('brand_display', $brand->brand);
-                                                }
+                            ->label('Nama Pelanggan')
+                            ->relationship('pelanggan', 'nama')
+                            ->searchable()
+                            ->preload()
+                            ->required()
+                            ->live()
+                            // Nonaktifkan komponen saat mode edit
+                            ->disabled(function ($livewire) {
+                                // Jika ini adalah halaman edit, disable
+                                return $livewire instanceof \App\Filament\Resources\LanggananResource\Pages\EditLangganan;
+                            })
+                            // Pastikan tetap di-save meskipun disabled
+                            ->dehydrated(true)
+                            // Validasi hanya saat create, tidak saat edit
+                            ->rules([
+                                function ($get, $context) {
+                                    // Hanya lakukan validasi saat create
+                                    if ($context === 'create') {
+                                        return function (string $attribute, $value, $fail) {
+                                            if (!$value) {
+                                                $fail('Pelanggan harus dipilih.');
+                                                return;
                                             }
 
-                                            if (!empty($pelanggan->layanan)) {
-                                                $set('layanan', $pelanggan->layanan);
-                                                $set('layanan_display', $pelanggan->layanan);
-                                            }
+                                            $query = Langganan::where('pelanggan_id', $value)
+                                                        ->where('user_status', 'Aktif');
 
-                                            if (!empty($pelanggan->id_brand) && !empty($pelanggan->layanan)) {
-                                                self::updateTotalHarga($set, $get);
+                                            if ($query->exists()) {
+                                                $existingLangganan = $query->first();
+                                                $pelanggan = Pelanggan::find($value);
+                                                $namaPelanggan = $pelanggan ? $pelanggan->nama : 'ID #' . $value;
+                                                $fail("Pelanggan {$namaPelanggan} sudah memiliki langganan aktif dengan ID #{$existingLangganan->id}. Satu pelanggan hanya boleh memiliki satu langganan aktif.");
                                             }
+                                        };
+                                    }
+                                    
+                                    return null;
+                                }
+                            ])
+                            ->afterStateUpdated(function ($state, callable $set, callable $get, $livewire) {
+                                if (!$state) return;
+
+                                // Isi data otomatis tanpa validasi duplikat
+                                $pelanggan = Pelanggan::find($state);
+                                if ($pelanggan) {
+                                    if (!empty($pelanggan->id_brand)) {
+                                        $set('id_brand', $pelanggan->id_brand);
+                                        $brand = HargaLayanan::where('id_brand', $pelanggan->id_brand)->first();
+                                        if ($brand) {
+                                            $set('brand_display', $brand->brand);
                                         }
-                                    }),
+                                    }
+
+                                    if (!empty($pelanggan->layanan)) {
+                                        $set('layanan', $pelanggan->layanan);
+                                        $set('layanan_display', $pelanggan->layanan);
+                                    }
+
+                                    if (!empty($pelanggan->id_brand) && !empty($pelanggan->layanan)) {
+                                        self::updateTotalHarga($set, $get);
+                                    }
+                                }
+                            }),
 
                                 TextInput::make('brand_display')
                                     ->label('Brand Layanan')

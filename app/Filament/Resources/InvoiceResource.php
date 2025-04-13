@@ -339,26 +339,56 @@ class InvoiceResource extends Resource
                         default => null,
                     }),
 
+                    // TextColumn::make('paid_at')
+                    // ->label('Tanggal Pembayaran')
+                    // ->formatStateUsing(function ($record) {
+                    //     if (!$record->paid_at) return '-';
+                        
+                    //     // Konversi UTC ke WIB (UTC+7)
+                    //     $localTime = \Carbon\Carbon::parse($record->paid_at)
+                    //         ->addHours(7)
+                    //         ->format('d M Y : H:i:s');
+                        
+                    //     return $localTime;
+                    // })
+                    // ->sortable()
+                    // ->toggleable()
+                    // ->description(fn ($record) => 
+                    //     $record->paid_at ? 'Pembayaran diterima' : '-'
+                    // )
+                    // ->color(fn ($record) => 
+                    //     $record->paid_at ? 'success' : 'danger'
+                    // ),
+
                     TextColumn::make('paid_at')
                     ->label('Tanggal Pembayaran')
                     ->formatStateUsing(function ($record) {
                         if (!$record->paid_at) return '-';
                         
-                        // Konversi UTC ke WIB (UTC+7)
+                        // Format waktu dengan timezone yang benar
                         $localTime = \Carbon\Carbon::parse($record->paid_at)
-                            ->addHours(7)
+                            ->timezone('Asia/Jakarta')
                             ->format('d M Y : H:i:s');
                         
-                        return $localTime;
+                        // Debug: cek nilai invoice_number
+                        // Log::info('Invoice check: ' . $record->invoice_number . ' contains CASH: ' . str_contains($record->invoice_number, '-CASH'));
+                        
+                        // Cek jika ini pembayaran tunai dengan sangat eksplisit
+                        if (str_contains($record->invoice_number, '-CASH')) {
+                            return $localTime . '<br><span class="text-xs text-gray-500">Pembayaran Telah Diterima / Cash</span>';
+                        } else {
+                            return $localTime . '<br><span class="text-xs text-gray-500">Pembayaran Telah Diterima</span>';
+                        }
                     })
+                    ->html()
                     ->sortable()
                     ->toggleable()
-                    ->description(fn ($record) => 
-                        $record->paid_at ? 'Pembayaran diterima' : '-'
-                    )
                     ->color(fn ($record) => 
                         $record->paid_at ? 'success' : 'danger'
                     ),
+
+
+
                 TextColumn::make('xendit_external_id')
                     ->label('Xendit External ID')
                     ->searchable()
@@ -457,17 +487,25 @@ class InvoiceResource extends Resource
                     ])
                     ->visible(fn ($record) => !empty($record->payment_link)),
                     
-                Action::make('mark_as_paid')
+                    Action::make('mark_as_paid')
                     ->label('Tandai Lunas')
                     ->icon('heroicon-o-check-circle')
                     ->color('success')
                     ->action(function ($record) {
                         $record->status_invoice = 'Lunas';
+                        $record->paid_at = now();
+                        
+                        // Tambahkan tanda pembayaran cash dengan jelas
+                        if (!str_contains($record->invoice_number, '-CASH')) {
+                            $record->invoice_number = $record->invoice_number . '-CASH';
+                        }
+                        
                         $record->save();
+                        
                         Notification::make()
                             ->success()
                             ->title('💰 Invoice Ditandai Lunas!')
-                            ->body("Invoice {$record->invoice_number} telah ditandai sebagai lunas.")
+                            ->body("Invoice {$record->invoice_number} telah ditandai sebagai lunas (Pembayaran Tunai).")
                             ->send();
                     })
                     ->requiresConfirmation()
@@ -490,30 +528,33 @@ class InvoiceResource extends Resource
             ])
             ->bulkActions([
                 Tables\Actions\BulkAction::make('mark_bulk_as_paid')
-                    ->label('Tandai Lunas')
-                    ->icon('heroicon-o-check-circle')
-                    ->color('success')
-                    ->action(function ($records) {
-                        $count = 0;
-                        foreach ($records as $record) {
-                            if ($record->status_invoice === 'Menunggu Pembayaran') {
-                                $record->status_invoice = 'Lunas';
-                                $record->save();
-                                $count++;
-                            }
+                ->label('Tandai Lunas')
+                ->icon('heroicon-o-check-circle')
+                ->color('success')
+                ->action(function ($records) {
+                    $count = 0;
+                    foreach ($records as $record) {
+                        if ($record->status_invoice === 'Menunggu Pembayaran') {
+                            $record->status_invoice = 'Lunas';
+                            $record->paid_at = now();
+                            $record->payment_method = 'Tunai';
+                            $record->payment_note = 'Pembayaran Ditandai Sebagai Tunai Oleh Teknisi';
+                            $record->save();
+                            $count++;
                         }
-                        
-                        Notification::make()
-                            ->success()
-                            ->title("💰 {$count} Invoice Ditandai Lunas!")
-                            ->body("Berhasil memperbarui status {$count} invoice menjadi lunas.")
-                            ->send();
-                    })
-                    ->requiresConfirmation()
-                    ->modalHeading('Tandai Beberapa Invoice Sebagai Lunas')
-                    ->modalDescription('Apakah Anda yakin ingin menandai semua invoice yang dipilih sebagai lunas?')
-                    ->modalSubmitActionLabel('Ya, Tandai Lunas')
-                    ->deselectRecordsAfterCompletion(),
+                    }
+                    
+                    Notification::make()
+                        ->success()
+                        ->title("💰 {$count} Invoice Ditandai Lunas!")
+                        ->body("Berhasil memperbarui status {$count} invoice menjadi lunas (Pembayaran Tunai).")
+                        ->send();
+                })
+                ->requiresConfirmation()
+                ->modalHeading('Tandai Beberapa Invoice Sebagai Lunas (Tunai)')
+                ->modalDescription('Apakah Anda yakin ingin menandai semua invoice yang dipilih sebagai lunas dengan pembayaran tunai?')
+                ->modalSubmitActionLabel('Ya, Tandai Lunas (Tunai)')
+                ->deselectRecordsAfterCompletion(),
                     
                 Tables\Actions\DeleteBulkAction::make()
                     ->requiresConfirmation()

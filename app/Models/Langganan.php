@@ -70,16 +70,13 @@ class Langganan extends Model
     parent::boot();
 
     static::creating(function ($langganan) {
-        // Cek apakah pelanggan sudah memiliki langganan berdasarkan pelanggan_id
-        $existingLanggananByPelanggan = self::where('pelanggan_id', $langganan->pelanggan_id)
-                                          ->where('user_status', 'Aktif') // Diperbaiki dari 'status' ke 'user_status'
-                                          ->first();
-
-        // Cek apakah pelanggan sudah memiliki langganan berdasarkan id_pelanggan dari data_teknis
+        // Cek duplikat berdasarkan id_pelanggan (prioritas utama)
         $dataTeknis = DataTeknis::where('pelanggan_id', $langganan->pelanggan_id)->first();
-        if ($dataTeknis && $dataTeknis->id_pelanggan) {
-            $existingLanggananByIdPelanggan = self::where('id_pelanggan', $dataTeknis->id_pelanggan)
-                                                ->where('user_status', 'Aktif') // Diperbaiki dari 'status' ke 'user_status'
+        $idPelangganToCheck = $dataTeknis ? $dataTeknis->id_pelanggan : null;
+
+        if ($idPelangganToCheck) {
+            $existingLanggananByIdPelanggan = self::where('id_pelanggan', $idPelangganToCheck)
+                                                ->where('user_status', 'Aktif')
                                                 ->first();
 
             if ($existingLanggananByIdPelanggan) {
@@ -88,29 +85,21 @@ class Langganan extends Model
 
                 Log::warning('Mencoba membuat langganan duplikat berdasarkan id_pelanggan', [
                     'pelanggan_id' => $langganan->pelanggan_id,
-                    'id_pelanggan' => $dataTeknis->id_pelanggan,
+                    'id_pelanggan' => $idPelangganToCheck,
                     'existing_langganan_id' => $existingLanggananByIdPelanggan->id,
                     'nama_pelanggan' => $namaPelanggan
                 ]);
 
-                Notification::make()
-                    ->warning()
-                    ->title('Langganan Sudah Ada')
-                    ->body("Pelanggan {$namaPelanggan} sudah memiliki langganan aktif berdasarkan ID Pelanggan #{$dataTeknis->id_pelanggan}. Satu pelanggan hanya boleh memiliki satu langganan aktif.")
-                    ->persistent()
-                    ->actions([
-                        NotificationAction::make('lihat')
-                            ->label('Lihat Langganan')
-                            ->url(route('filament.resources.langganan.edit', $existingLanggananByIdPelanggan->id))
-                            ->button(),
-                    ])
-                    ->send();
-
                 throw ValidationException::withMessages([
-                    'pelanggan_id' => ["Pelanggan {$namaPelanggan} sudah memiliki langganan aktif berdasarkan ID Pelanggan."],
+                    'pelanggan_id' => ["Pelanggan dengan ID Pelanggan #{$idPelangganToCheck} sudah memiliki langganan aktif."],
                 ]);
             }
         }
+
+        // Cek duplikat berdasarkan pelanggan_id (jika id_pelanggan tidak ada)
+        $existingLanggananByPelanggan = self::where('pelanggan_id', $langganan->pelanggan_id)
+                                          ->where('user_status', 'Aktif')
+                                          ->first();
 
         if ($existingLanggananByPelanggan) {
             $pelanggan = Pelanggan::find($langganan->pelanggan_id);
@@ -122,21 +111,8 @@ class Langganan extends Model
                 'nama_pelanggan' => $namaPelanggan
             ]);
 
-            Notification::make()
-                ->warning()
-                ->title('Langganan Sudah Ada')
-                ->body("Pelanggan {$namaPelanggan} sudah memiliki langganan aktif dengan ID #{$existingLanggananByPelanggan->id}. Satu pelanggan hanya boleh memiliki satu langganan aktif.")
-                ->persistent()
-                ->actions([
-                    NotificationAction::make('lihat')
-                        ->label('Lihat Langganan')
-                        ->url(route('filament.resources.langganan.edit', $existingLanggananByPelanggan->id))
-                        ->button(),
-                ])
-                ->send();
-
             throw ValidationException::withMessages([
-                'pelanggan_id' => ["Pelanggan {$namaPelanggan} sudah memiliki langganan aktif di database."],
+                'pelanggan_id' => ["Pelanggan ini sudah memiliki langganan aktif."],
             ]);
         }
 
@@ -151,7 +127,6 @@ class Langganan extends Model
             }
         }
 
-        $dataTeknis = DataTeknis::where('pelanggan_id', $langganan->pelanggan_id)->first();
         if ($dataTeknis) {
             $langganan->profile_pppoe = $dataTeknis->profile_pppoe;
             $langganan->id_pelanggan = $dataTeknis->id_pelanggan;
@@ -179,6 +154,57 @@ class Langganan extends Model
     });
 
     static::updating(function ($langganan) {
+        if ($langganan->isDirty('pelanggan_id') && !request()->is('admin/langganan/*/edit')) {
+            // Cek duplikat berdasarkan id_pelanggan baru
+            $newPelangganId = $langganan->pelanggan_id;
+            $dataTeknis = DataTeknis::where('pelanggan_id', $newPelangganId)->first();
+            $newIdPelanggan = $dataTeknis ? $dataTeknis->id_pelanggan : null;
+
+            if ($newIdPelanggan) {
+                $existingLangganan = self::where('id_pelanggan', $newIdPelanggan)
+                                        ->where('user_status', 'Aktif')
+                                        ->where('id', '!=', $langganan->id)
+                                        ->first();
+
+                if ($existingLangganan) {
+                    $pelanggan = Pelanggan::find($newPelangganId);
+                    $namaPelanggan = $pelanggan ? $pelanggan->nama : 'ID #' . $newPelangganId;
+
+                    Log::warning('Mencoba update ke pelanggan yang sudah memiliki langganan', [
+                        'pelanggan_id' => $newPelangganId,
+                        'id_pelanggan' => $newIdPelanggan,
+                        'existing_langganan_id' => $existingLangganan->id,
+                        'nama_pelanggan' => $namaPelanggan
+                    ]);
+
+                    throw ValidationException::withMessages([
+                        'pelanggan_id' => ["Pelanggan dengan ID Pelanggan #{$newIdPelanggan} sudah memiliki langganan aktif."],
+                    ]);
+                }
+            }
+
+            // Cek duplikat berdasarkan pelanggan_id baru
+            $existingLanggananByPelanggan = self::where('pelanggan_id', $newPelangganId)
+                                              ->where('user_status', 'Aktif')
+                                              ->where('id', '!=', $langganan->id)
+                                              ->first();
+
+            if ($existingLanggananByPelanggan) {
+                $pelanggan = Pelanggan::find($newPelangganId);
+                $namaPelanggan = $pelanggan ? $pelanggan->nama : 'ID #' . $newPelangganId;
+
+                Log::warning('Mencoba update ke pelanggan yang sudah memiliki langganan', [
+                    'pelanggan_id' => $newPelangganId,
+                    'existing_langganan_id' => $existingLanggananByPelanggan->id,
+                    'nama_pelanggan' => $namaPelanggan
+                ]);
+
+                throw ValidationException::withMessages([
+                    'pelanggan_id' => ["Pelanggan ini sudah memiliki langganan aktif."],
+                ]);
+            }
+        }
+
         if ($langganan->isDirty('tgl_jatuh_tempo')) {
             Log::info('Tanggal jatuh tempo diubah', [
                 'pelanggan_id' => $langganan->pelanggan_id,
