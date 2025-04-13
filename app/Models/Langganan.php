@@ -153,6 +153,24 @@ class Langganan extends Model
         $langganan->user_status = 'Suspend';
     });
 
+    static::created(function ($langganan) {
+        $dataTeknis = \App\Models\DataTeknis::where('pelanggan_id', $langganan->pelanggan_id)->first();
+        Log::info('Memeriksa Data Teknis setelah pembuatan langganan', [
+            'langganan_id' => $langganan->id,
+            'pelanggan_id' => $langganan->pelanggan_id,
+            'data_teknis_exists' => $dataTeknis ? true : false,
+            'data_teknis_count' => \App\Models\DataTeknis::where('pelanggan_id', $langganan->pelanggan_id)->count()
+        ]);
+
+        if (!$dataTeknis) {
+            event(new \App\Events\LanggananCreatedWithoutDataTeknis($langganan));
+            Log::info('Event LanggananCreatedWithoutDataTeknis dipicu', ['langganan_id' => $langganan->id]);
+        } else {
+            Log::info('Data Teknis sudah ada, event tidak dipicu', ['langganan_id' => $langganan->id]);
+        }
+    });
+
+
     static::updating(function ($langganan) {
         if ($langganan->isDirty('pelanggan_id') && !request()->is('admin/langganan/*/edit')) {
             // Cek duplikat berdasarkan id_pelanggan baru

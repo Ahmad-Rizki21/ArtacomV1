@@ -6,8 +6,10 @@ use Illuminate\Auth\Events\Registered;
 use Illuminate\Auth\Listeners\SendEmailVerificationNotification;
 use Illuminate\Foundation\Support\Providers\EventServiceProvider as ServiceProvider;
 use Illuminate\Support\Facades\Event;
+use App\Events\LanggananCreatedWithoutDataTeknis;
 use App\Events\InvoiceCreated;
 use App\Listeners\SendInvoiceToXendit;
+use App\Listeners\SendNocNotification;
 
 class EventServiceProvider extends ServiceProvider
 {
@@ -19,7 +21,11 @@ class EventServiceProvider extends ServiceProvider
     protected $listen = [
         Registered::class => [
             SendEmailVerificationNotification::class,
+            LanggananCreatedWithoutDataTeknis::class => [
+                SendNocNotification::class,
+            ],
         ],
+        
         // Perbaiki referensi listener disini
         // InvoiceCreated::class => [
         //     SendInvoiceToXendit::class, // Pastikan ini sesuai dengan nama class yang Anda miliki
