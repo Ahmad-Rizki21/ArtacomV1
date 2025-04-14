@@ -22,6 +22,21 @@ class PelangganImportController extends Controller
         }
 
         try {
+            // Log file info untuk debugging
+            $file = $request->file('file');
+            Log::info('Import file details', [
+                'original_name' => $file->getClientOriginalName(),
+                'extension' => $file->getClientOriginalExtension(),
+                'mime_type' => $file->getMimeType(),
+                'size' => $file->getSize()
+            ]);
+            
+            // Preview file content untuk debugging (hanya beberapa baris pertama)
+            $content = file_get_contents($file->getRealPath());
+            Log::info('File content preview:', [
+                'first_500_chars' => substr($content, 0, 500)
+            ]);
+            
             // Perform table reset in a separate transaction
             try {
                 DB::beginTransaction();
@@ -30,6 +45,7 @@ class PelangganImportController extends Controller
                 DB::statement('ALTER TABLE pelanggan AUTO_INCREMENT = 1');
                 DB::statement('SET FOREIGN_KEY_CHECKS=1');
                 DB::commit();
+                Log::info('Table truncated successfully');
             } catch (\Exception $e) {
                 DB::rollBack();
                 Log::error('Error resetting table', [
@@ -39,13 +55,17 @@ class PelangganImportController extends Controller
                 return redirect()->back()->with('error', 'Gagal mereset tabel: ' . $e->getMessage());
             }
             
-            // Then import data (now using WithoutTransaction)
+            // Then import data
             Excel::import(new PelangganImport, $request->file('file'));
             
             // Optional: Fix existing data in the database (if needed)
             $this->fixExistingData();
             
-            return redirect()->back()->with('success', 'Data pelanggan berhasil diimpor!');
+            // Verify import success
+            $count = DB::table('pelanggan')->count();
+            Log::info('Data imported successfully: ' . $count . ' records');
+            
+            return redirect()->back()->with('success', 'Data pelanggan berhasil diimpor! Total data: ' . $count);
         } catch (\Exception $e) {
             Log::error('Import error', [
                 'message' => $e->getMessage(),
