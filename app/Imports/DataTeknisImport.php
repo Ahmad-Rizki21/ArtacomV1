@@ -4,196 +4,138 @@ namespace App\Imports;
 
 use App\Models\DataTeknis;
 use App\Models\Pelanggan;
-use Maatwebsite\Excel\Concerns\ToModel;
+use Maatwebsite\Excel\Concerns\ToCollection;
 use Maatwebsite\Excel\Concerns\WithHeadingRow;
-use Maatwebsite\Excel\Concerns\WithValidation;
-use Maatwebsite\Excel\Concerns\WithBatchInserts;
-use Maatwebsite\Excel\Concerns\WithChunkReading;
-use Maatwebsite\Excel\Concerns\WithPreparation;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\DB;
 
-class DataTeknisImport implements ToModel, WithHeadingRow, WithValidation, WithBatchInserts, WithChunkReading
+class DataTeknisImport implements ToCollection, WithHeadingRow
 {
     /**
-     * Prepare data before validation
+     * @param Collection $rows
      */
-    public function prepareForValidation(array $row, int $index)
+    public function collection(Collection $rows)
     {
-        // Konversi data sebelum validasi
-        if (isset($row['id_pelanggan'])) {
-            $row['id_pelanggan'] = (string) $row['id_pelanggan'];
-        }
-        if (isset($row['id_vlan'])) {
-            $row['id_vlan'] = (string) $row['id_vlan'];
+        Log::info('Starting data teknis import with ' . $rows->count() . ' rows');
+        
+        $successCount = 0;
+        $failedCount = 0;
+        
+        // Deactivate foreign key checks temporarily
+        DB::statement('SET FOREIGN_KEY_CHECKS=0;');
+        
+        try {
+            // Process each row individually to avoid batch failures
+            foreach ($rows as $index => $row) {
+                try {
+                    // Log raw data for debugging
+                    Log::debug('Data teknis row ' . ($index + 2), (array)$row);
+                    
+                    // Skip if row is empty
+                    if (empty($row) || count(array_filter((array)$row)) === 0) {
+                        Log::info('Skipping empty row ' . ($index + 2));
+                        continue;
+                    }
+                    
+                    // Extract and convert data
+                    $excelId = isset($row['id']) ? (int)$row['id'] : null;
+                    $pelangganId = isset($row['pelanggan_id']) ? (int)$row['pelanggan_id'] : null;
+                    
+                    // Skip if no pelanggan_id
+                    if (!$pelangganId) {
+                        Log::warning('Skipping row ' . ($index + 2) . ': No pelanggan_id found');
+                        $failedCount++;
+                        continue;
+                    }
+                    
+                    // Check if pelanggan exists
+                    $pelangganExists = DB::table('pelanggan')->where('id', $pelangganId)->exists();
+                    if (!$pelangganExists) {
+                        // Create minimal pelanggan record if needed
+                        if (isset($row['id_pelanggan']) && !empty($row['id_pelanggan'])) {
+                            $nama = (string)$row['id_pelanggan'];
+                            Log::warning('Pelanggan ID ' . $pelangganId . ' not found. Creating minimal record with name: ' . $nama);
+                            
+                            DB::table('pelanggan')->insert([
+                                'id' => $pelangganId,
+                                'nama' => $nama,
+                                'no_ktp' => '0000000000000000',
+                                'alamat' => 'Generated',
+                                'blok' => 'N/A',
+                                'unit' => 'N/A',
+                                'created_at' => now(),
+                                'updated_at' => now(),
+                            ]);
+                        } else {
+                            Log::error('Skipping row ' . ($index + 2) . ': Pelanggan ID ' . $pelangganId . ' not found and cannot create without id_pelanggan');
+                            $failedCount++;
+                            continue;
+                        }
+                    }
+                    
+                    // Prepare data
+                    $data = [
+                        'pelanggan_id' => $pelangganId,
+                        'id_vlan' => isset($row['id_vlan']) ? (string)$row['id_vlan'] : '',
+                        'id_pelanggan' => isset($row['id_pelanggan']) ? (string)$row['id_pelanggan'] : '',
+                        'password_pppoe' => isset($row['password_pppoe']) ? (string)$row['password_pppoe'] : 'support123.!!',
+                        'ip_pelanggan' => isset($row['ip_pelanggan']) ? (string)$row['ip_pelanggan'] : '192.168.0.' . $pelangganId,
+                        'profile_pppoe' => isset($row['profile_pppoe']) ? (string)$row['profile_pppoe'] : '10Mbps-a',
+                        'olt' => isset($row['olt']) ? (string)$row['olt'] : 'Default',
+                        'olt_custom' => isset($row['olt_custom']) ? (string)$row['olt_custom'] : 'N/A',
+                        'pon' => isset($row['pon']) ? (int)$row['pon'] : 0,
+                        'otb' => isset($row['otb']) ? (int)$row['otb'] : 0,
+                        'odc' => isset($row['odc']) ? (int)$row['odc'] : 0,
+                        'odp' => isset($row['odp']) ? (int)$row['odp'] : 0,
+                        'onu_power' => isset($row['onu_power']) ? (int)$row['onu_power'] : 0,
+                        'created_at' => now(),
+                        'updated_at' => now(),
+                    ];
+                    
+                    // Check if record already exists
+                    $existingRecord = DB::table('data_teknis')->where('pelanggan_id', $pelangganId)->first();
+                    
+                    if ($existingRecord) {
+                        // Update existing record
+                        DB::table('data_teknis')
+                            ->where('id', $existingRecord->id)
+                            ->update($data);
+                        
+                        Log::info('Updated data teknis for pelanggan ID ' . $pelangganId);
+                    } else {
+                        // Insert new record with explicit ID if provided
+                        if ($excelId) {
+                            $data['id'] = $excelId;
+                        }
+                        
+                        DB::table('data_teknis')->insert($data);
+                        
+                        Log::info('Inserted new data teknis for pelanggan ID ' . $pelangganId . 
+                                 ($excelId ? ' with ID ' . $excelId : ''));
+                    }
+                    
+                    $successCount++;
+                    
+                } catch (\Exception $e) {
+                    // Log error but continue with next row
+                    Log::error('Error processing row ' . ($index + 2), [
+                        'error' => $e->getMessage(),
+                        'trace' => $e->getTraceAsString(),
+                    ]);
+                    
+                    $failedCount++;
+                }
+            }
+        } finally {
+            // Re-enable foreign key checks
+            DB::statement('SET FOREIGN_KEY_CHECKS=1;');
         }
         
-        return $row;
-    }
-
-    /**
-     * @param array $row
-     *
-     * @return \Illuminate\Database\Eloquent\Model|null
-     */
-    public function model(array $row)
-    {
-        try {
-            // Log data untuk debugging
-            Log::info('Importing data teknis row', ['data' => $row]);
-            
-            // Validasi pelanggan_id
-            $pelanggan = Pelanggan::find($row['pelanggan_id']);
-            if (!$pelanggan) {
-                Log::error('Pelanggan tidak ditemukan', ['pelanggan_id' => $row['pelanggan_id']]);
-                return null;
-            }
-            
-            // Pastikan id_vlan adalah string
-            $idVlan = (string)$row['id_vlan'];
-            
-            // Validasi dan format id_pelanggan - konversi eksplisit ke string
-            $idPelanggan = (string)$row['id_pelanggan'];
-            
-            // Cari record yang sudah ada berdasarkan pelanggan_id atau id_pelanggan
-            $existingRecord = DataTeknis::where(function($query) use ($row, $idPelanggan) {
-                $query->where('pelanggan_id', $row['pelanggan_id'])
-                      ->orWhere('id_pelanggan', $idPelanggan);
-            })->first();
-            
-            // Pastikan pon, otb, odc, odp, dan onu_power adalah integer
-            $pon = intval($row['pon'] ?? 0);
-            $otb = intval($row['otb'] ?? 0);
-            $odc = intval($row['odc'] ?? 0);
-            $odp = intval($row['odp'] ?? 0);
-            $onuPower = intval($row['onu_power'] ?? 0);
-            
-            // Data yang akan dimasukkan/diupdate
-            $data = [
-                'pelanggan_id'      => $row['pelanggan_id'],
-                'id_vlan'           => $idVlan, // Pastikan string
-                'id_pelanggan'      => $idPelanggan,
-                'password_pppoe'    => $row['password_pppoe'],
-                'ip_pelanggan'      => $row['ip_pelanggan'],
-                'profile_pppoe'     => $row['profile_pppoe'],
-                'olt'               => $row['olt'],
-                'olt_custom'        => $row['olt_custom'] ?? 'N/A',
-                'pon'               => $pon,
-                'otb'               => $otb,
-                'odc'               => $odc,
-                'odp'               => $odp,
-                'onu_power'         => $onuPower,
-                'updated_at'        => now()
-            ];
-            
-            // Jika ada created_at di data dan valid, gunakan itu
-            if (isset($row['created_at']) && !empty($row['created_at'])) {
-                try {
-                    $data['created_at'] = \Carbon\Carbon::parse($row['created_at']);
-                } catch (\Exception $e) {
-                    $data['created_at'] = now();
-                }
-            } else if (!$existingRecord) {
-                // Hanya set created_at jika ini record baru
-                $data['created_at'] = now();
-            }
-            
-            // Jika record sudah ada, update
-            if ($existingRecord) {
-                Log::info('Updating existing data teknis', [
-                    'id' => $existingRecord->id,
-                    'pelanggan_id' => $existingRecord->pelanggan_id
-                ]);
-                
-                $existingRecord->update($data);
-                return null;
-            }
-            
-            // Jika ada ID di data import dan valid, gunakan itu
-            if (isset($row['id']) && is_numeric($row['id'])) {
-                $data['id'] = $row['id'];
-            }
-            
-            // Buat record baru
-            Log::info('Creating new data teknis', [
-                'pelanggan_id' => $data['pelanggan_id'],
-                'id_pelanggan' => $data['id_pelanggan']
-            ]);
-            
-            return new DataTeknis($data);
-            
-        } catch (\Exception $e) {
-            Log::error('Error importing data teknis row', [
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString(),
-                'row' => $row
-            ]);
-            
-            // Re-throw untuk ditangani di controller
-            throw $e;
-        }
-    }
-
-    /**
-     * @return array
-     */
-    public function rules(): array
-    {
-        return [
-            'pelanggan_id'      => 'required|exists:pelanggan,id',
-            'id_pelanggan'   => ['required', 'max:191', function ($attribute, $value, $fail) {
-                // Validasi kustom yang mengkonversi nilai ke string jika numerik
-                if (!is_string($value) && !is_numeric($value)) {
-                    $fail("Kolom {$attribute} harus berupa string atau angka.");
-                }
-            }],
-            'id_vlan'           => ['required', 'max:191', function ($attribute, $value, $fail) {
-                // Validasi kustom yang mengkonversi nilai ke string jika numerik
-                if (!is_string($value) && !is_numeric($value)) {
-                    $fail("Kolom {$attribute} harus berupa string atau angka.");
-                }
-            }],
-            'password_pppoe'    => 'required|string|max:191',
-            'ip_pelanggan'      => 'required|string|max:191',
-            'profile_pppoe'     => 'required|string|max:191',
-            'olt'               => 'required|string|max:191',
-            'olt_custom'        => 'nullable|string|max:191',
-            'pon'               => 'nullable',
-            'otb'               => 'nullable',
-            'odc'               => 'nullable',
-            'odp'               => 'nullable',
-            'onu_power'         => 'nullable',
-            'created_at'        => 'nullable',
-            'updated_at'        => 'nullable'
-        ];
-    }
-
-    /**
-     * Customize the validation messages
-     *
-     * @return array
-     */
-    public function customValidationMessages()
-    {
-        return [
-            'id_vlan.required' => 'Kolom id_vlan harus diisi',
-            'pelanggan_id.exists' => 'Pelanggan dengan ID ini tidak ditemukan',
-            'id_pelanggan.required' => 'Kolom id_pelanggan harus diisi',
-        ];
-    }
-
-    /**
-     * @return int
-     */
-    public function batchSize(): int
-    {
-        return 100;
-    }
-
-    /**
-     * @return int
-     */
-    public function chunkSize(): int
-    {
-        return 100;
+        Log::info('Data teknis import completed', [
+            'total' => $rows->count(),
+            'success' => $successCount,
+            'failed' => $failedCount
+        ]);
     }
 }

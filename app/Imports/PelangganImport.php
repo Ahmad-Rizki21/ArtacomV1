@@ -6,7 +6,6 @@ use App\Models\Pelanggan;
 use Maatwebsite\Excel\Concerns\ToCollection;
 use Maatwebsite\Excel\Concerns\WithHeadingRow;
 use Maatwebsite\Excel\Concerns\WithCustomCsvSettings;
-use Maatwebsite\Excel\Concerns\WithoutTransaction;
 use Maatwebsite\Excel\Concerns\SkipsEmptyRows;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
@@ -43,159 +42,188 @@ class PelangganImport implements ToCollection, WithHeadingRow, WithCustomCsvSett
         }
         
         $successCount = 0;
-        $dataToInsert = [];
+        $failedCount = 0;
         
-        foreach ($rows as $index => $row) {
-            try {
-                // Skip jika row adalah header atau kosong
-                if ($index === 0 || empty($row) || count(array_filter((array)$row)) === 0) {
-                    continue;
-                }
-                
-                // Deteksi apakah kolom 'id' ada dan hilangkan jika perlu 
-                // (ini untuk menangani file yang memiliki kolom 'id' di awal)
-                if (isset($row['id'])) {
-                    Log::info('ID column found in row ' . $index . ': ' . $row['id']);
-                }
-                
-                // Format no_ktp
-                $noKtp = "00000000";
-                if (isset($row['no_ktp'])) {
-                    // Pastikan nilai valid
-                    if (!empty($row['no_ktp'])) {
-                        if (is_numeric($row['no_ktp'])) {
-                            $noKtp = str_pad($row['no_ktp'], 8, "0", STR_PAD_LEFT);
-                        } else {
-                            $noKtp = (string)$row['no_ktp'];
+        // Nonaktifkan foreign key checks sementara untuk proses impor
+        DB::statement('SET FOREIGN_KEY_CHECKS=0;');
+        
+        try {
+            foreach ($rows as $index => $row) {
+                try {
+                    // Skip jika row adalah header atau kosong
+                    if ($index === 0 || empty($row) || count(array_filter((array)$row)) === 0) {
+                        continue;
+                    }
+                    
+                    // Deteksi ID di Excel
+                    $excelId = null;
+                    if (isset($row['id']) && is_numeric($row['id'])) {
+                        $excelId = (int)$row['id'];
+                        Log::info('ID column found in row ' . $index . ': ' . $excelId);
+                    }
+                    
+                    // Format no_ktp
+                    $noKtp = "00000000";
+                    if (isset($row['no_ktp'])) {
+                        if (!empty($row['no_ktp'])) {
+                            if (is_numeric($row['no_ktp'])) {
+                                $noKtp = str_pad($row['no_ktp'], 8, "0", STR_PAD_LEFT);
+                            } else {
+                                $noKtp = (string)$row['no_ktp'];
+                            }
                         }
                     }
-                }
-                
-                // Format phone numbers
-                $noTelp = "";
-                if (isset($row['no_telp'])) {
-                    // Hapus karakter non-digit
-                    $cleaned = preg_replace('/[^0-9]/', '', (string)$row['no_telp']);
                     
-                    // Pastikan diawali 0
-                    $noTelp = substr($cleaned, 0, 1) !== '0' 
-                        ? '0' . $cleaned 
-                        : $cleaned;
-                }
-                
-                // ALAMAT FIX - Check all possible patterns carefully
-                $alamat = "";
-                if (isset($row['alamat'])) {
-                    $alamatValue = (string)$row['alamat'];
-                    
-                    // Direct replacement for any "Perumahan n" patterns
-                    if (strpos($alamatValue, 'Perumahan n ') !== false) {
-                        $alamat = str_replace('Perumahan n ', 'Perumahan ', $alamatValue);
+                    // Format phone numbers
+                    $noTelp = "";
+                    if (isset($row['no_telp'])) {
+                        $cleaned = preg_replace('/[^0-9]/', '', (string)$row['no_telp']);
+                        $noTelp = substr($cleaned, 0, 1) !== '0' ? '0' . $cleaned : $cleaned;
                     }
-                    // Excel truncated patterns
-                    else if (strpos($alamatValue, 'Perumaha') === 0) {
-                        if (preg_match('/PerumahaC/i', $alamatValue)) {
-                            $alamat = "Perumahan Tambun";
-                        } else if (preg_match('/PerumahaN\/A/i', $alamatValue)) {
-                            $alamat = "Perumahan Tambun";
-                        } else if (preg_match('/PerumahaB/i', $alamatValue)) {
-                            $alamat = "Perumahan Waringin";
-                        } else if (preg_match('/PerumahaA/i', $alamatValue)) {
-                            $alamat = "Perumahan Waringin";
+                    
+                    // ALAMAT FIX
+                    $alamat = "";
+                    if (isset($row['alamat'])) {
+                        $alamatValue = (string)$row['alamat'];
+                        
+                        if (strpos($alamatValue, 'Perumahan n ') !== false) {
+                            $alamat = str_replace('Perumahan n ', 'Perumahan ', $alamatValue);
+                        } else if (strpos($alamatValue, 'Perumaha') === 0) {
+                            if (preg_match('/PerumahaC/i', $alamatValue)) {
+                                $alamat = "Perumahan Tambun";
+                            } else if (preg_match('/PerumahaN\/A/i', $alamatValue)) {
+                                $alamat = "Perumahan Tambun";
+                            } else if (preg_match('/PerumahaB/i', $alamatValue)) {
+                                $alamat = "Perumahan Waringin";
+                            } else if (preg_match('/PerumahaA/i', $alamatValue)) {
+                                $alamat = "Perumahan Waringin";
+                            } else {
+                                $alamat = str_replace("Perumaha", "Perumahan ", $alamatValue);
+                            }
                         } else {
-                            $alamat = str_replace("Perumaha", "Perumahan ", $alamatValue);
+                            $alamat = $alamatValue;
+                        }
+                        
+                        if (strpos($alamat, 'Perumahan n') !== false) {
+                            $alamat = str_replace('Perumahan n', 'Perumahan', $alamat);
+                        }
+                    }
+                    
+                    // Process other fields
+                    $nama = isset($row['nama']) ? (string)$row['nama'] : "";
+                    $blok = isset($row['blok']) ? (string)$row['blok'] : "N/A";
+                    $unit = isset($row['unit']) ? (string)$row['unit'] : "N/A";
+                    $email = isset($row['email']) ? (string)$row['email'] : "N/A";
+                    $alamat2 = isset($row['alamat_2']) ? (string)$row['alamat_2'] : "";
+                    
+                    // Proses kolom tambahan
+                    $tglInstalasi = null;
+                    if (isset($row['tgl_instalasi']) && !empty($row['tgl_instalasi'])) {
+                        try {
+                            $date = \Carbon\Carbon::parse($row['tgl_instalasi']);
+                            $tglInstalasi = $date->format('Y-m-d');
+                        } catch (\Exception $e) {
+                            Log::warning('Error parsing date: ' . $row['tgl_instalasi']);
+                        }
+                    }
+                    
+                    $idBrand = isset($row['id_brand']) && !empty($row['id_brand']) ? (string)$row['id_brand'] : null;
+                    $layanan = isset($row['layanan']) && !empty($row['layanan']) ? (string)$row['layanan'] : null;
+                    $brandDefault = isset($row['brand_default']) && !empty($row['brand_default']) ? (string)$row['brand_default'] : null;
+                    $alamatCustom = isset($row['alamat_custom']) && !empty($row['alamat_custom']) ? (string)$row['alamat_custom'] : null;
+                    
+                    // For debugging
+                    Log::debug('Processing row ' . ($index + 1), [
+                        'excel_id' => $excelId,
+                        'nama' => $nama,
+                        'no_ktp' => $noKtp,
+                        'alamat' => $alamat
+                    ]);
+                    
+                    // Data untuk insert/update
+                    $data = [
+                        'no_ktp' => $noKtp,
+                        'nama' => $nama,
+                        'alamat' => $alamat,
+                        'alamat_custom' => $alamatCustom,
+                        'tgl_instalasi' => $tglInstalasi,
+                        'blok' => $blok,
+                        'unit' => $unit,
+                        'no_telp' => $noTelp,
+                        'email' => $email,
+                        'id_brand' => $idBrand,
+                        'layanan' => $layanan,
+                        'brand_default' => $brandDefault,
+                        'alamat_2' => $alamat2,
+                        'created_at' => now(),
+                        'updated_at' => now()
+                    ];
+                    
+                    // Jika ada ID dari Excel, gunakan ID tersebut
+                    if ($excelId) {
+                        // Cek apakah ID sudah ada
+                        $existingRecord = DB::table('pelanggan')->where('id', $excelId)->first();
+                        
+                        if ($existingRecord) {
+                            // Update jika ID sudah ada
+                            DB::table('pelanggan')
+                                ->where('id', $excelId)
+                                ->update($data);
+                                
+                            Log::info('Updated existing record with ID: ' . $excelId);
+                        } else {
+                            // Insert dengan ID spesifik
+                            $data['id'] = $excelId;
+                            DB::table('pelanggan')->insert($data);
+                            
+                            Log::info('Inserted new record with specific ID: ' . $excelId);
                         }
                     } else {
-                        $alamat = $alamatValue;
+                        // Jika tidak ada ID, coba cari berdasarkan nama dan alamat
+                        $existingRecord = DB::table('pelanggan')
+                            ->where('nama', $nama)
+                            ->where('alamat', $alamat)
+                            ->first();
+                            
+                        if ($existingRecord) {
+                            // Update jika ditemukan
+                            DB::table('pelanggan')
+                                ->where('id', $existingRecord->id)
+                                ->update($data);
+                                
+                            Log::info('Updated existing record based on name and address, ID: ' . $existingRecord->id);
+                        } else {
+                            // Insert sebagai record baru
+                            DB::table('pelanggan')->insert($data);
+                            
+                            Log::info('Inserted completely new record without specific ID');
+                        }
                     }
                     
-                    // Final safety check to ensure no "n" remains
-                    if (strpos($alamat, 'Perumahan n') !== false) {
-                        $alamat = str_replace('Perumahan n', 'Perumahan', $alamat);
-                    }
+                    $successCount++;
+                    
+                } catch (\Exception $e) {
+                    Log::error('Error processing row ' . ($index + 1), [
+                        'error' => $e->getMessage(),
+                        'trace' => $e->getTraceAsString(),
+                        'row' => isset($row) ? json_encode((array)$row) : 'No data'
+                    ]);
+                    $failedCount++;
                 }
-                
-                // Process other fields
-                $nama = isset($row['nama']) ? (string)$row['nama'] : ""; //Memuat data nama dari Excel
-                $blok = isset($row['blok']) ? (string)$row['blok'] : "N/A"; //Memuat data blok dari Excel
-                $unit = isset($row['unit']) ? (string)$row['unit'] : "N/A"; //Memuat data unit dari Excel
-                $email = isset($row['email']) ? (string)$row['email'] : "N/A"; //Memuat data email dari Excel
-                $alamat2 = isset($row['alamat_2']) ? (string)$row['alamat_2'] : ""; //Memuat data alamat_2 dari Excel
-                
-                // Proses kolom tambahan jika ada
-                $tglInstalasi = null;
-                if (isset($row['tgl_instalasi']) && !empty($row['tgl_instalasi'])) {
-                    try {
-                        $date = \Carbon\Carbon::parse($row['tgl_instalasi']);
-                        $tglInstalasi = $date->format('Y-m-d');
-                    } catch (\Exception $e) {
-                        Log::warning('Error parsing date: ' . $row['tgl_instalasi']);
-                    }
-                }
-                
-                $idBrand = isset($row['id_brand']) && !empty($row['id_brand']) ? (string)$row['id_brand'] : null;
-                $layanan = isset($row['layanan']) && !empty($row['layanan']) ? (string)$row['layanan'] : null;
-                $brandDefault = isset($row['brand_default']) && !empty($row['brand_default']) ? (string)$row['brand_default'] : null;
-                $alamatCustom = isset($row['alamat_custom']) && !empty($row['alamat_custom']) ? (string)$row['alamat_custom'] : null;
-                
-                // For debugging
-                Log::debug('Processing row ' . ($index + 1), [
-                    'nama' => $nama,
-                    'no_ktp' => $noKtp,
-                    'alamat' => $alamat,
-                    'tgl_instalasi' => $tglInstalasi,
-                    'id_brand' => $idBrand,
-                    'layanan' => $layanan
-                ]);
-                
-                // Prepare data for insert
-                $dataToInsert[] = [
-                    'no_ktp' => $noKtp,
-                    'nama' => $nama,
-                    'alamat' => $alamat,
-                    'alamat_custom' => $alamatCustom,
-                    'tgl_instalasi' => $tglInstalasi,
-                    'blok' => $blok,
-                    'unit' => $unit,
-                    'no_telp' => $noTelp,
-                    'email' => $email,
-                    'id_brand' => $idBrand,
-                    'layanan' => $layanan,
-                    'brand_default' => $brandDefault,
-                    'alamat_2' => $alamat2,
-                    'created_at' => now(),
-                    'updated_at' => now()
-                ];
-                
-                $successCount++;
-                
-                // Insert in batches
-                if (count($dataToInsert) >= 100) {
-                    DB::table('pelanggan')->insert($dataToInsert);
-                    $dataToInsert = [];
-                }
-                
-            } catch (\Exception $e) {
-                Log::error('Error processing row ' . ($index + 1), [
-                    'error' => $e->getMessage(),
-                    'trace' => $e->getTraceAsString(),
-                    'row' => isset($row) ? json_encode((array)$row) : 'No data'
-                ]);
             }
+            
+            // Fix any remaining "Perumahan n" issues
+            $this->fixAddressesInDatabase();
+            
+        } finally {
+            // Aktifkan kembali foreign key checks
+            DB::statement('SET FOREIGN_KEY_CHECKS=1;');
         }
-        
-        // Insert any remaining data
-        if (!empty($dataToInsert)) {
-            DB::table('pelanggan')->insert($dataToInsert);
-        }
-        
-        // Fix any remaining "Perumahan n" issues in the newly imported data
-        $this->fixAddressesInDatabase();
         
         Log::info('Import completed', [
             'total' => $rows->count(),
             'success' => $successCount,
-            'failed' => $rows->count() - $successCount
+            'failed' => $failedCount
         ]);
     }
     
@@ -205,7 +233,6 @@ class PelangganImport implements ToCollection, WithHeadingRow, WithCustomCsvSett
     private function fixAddressesInDatabase()
     {
         try {
-            // Multiple passes to ensure all variants are fixed
             DB::statement("UPDATE pelanggan SET alamat = REPLACE(alamat, 'Perumahan n ', 'Perumahan ') WHERE alamat LIKE 'Perumahan n %'");
             DB::statement("UPDATE pelanggan SET alamat = REPLACE(alamat, 'Perumahan n', 'Perumahan') WHERE alamat LIKE 'Perumahan n%'");
             

@@ -82,7 +82,7 @@ class LanggananExport implements FromQuery, WithHeadings, WithMapping, WithStyle
      */
     public function map($row): array
     {
-        // Fungsi untuk mengonversi tanggal dengan aman
+        // Fungsi untuk mengonversi tanggal
         $formatDate = function($date) {
             if (empty($date)) return null;
             

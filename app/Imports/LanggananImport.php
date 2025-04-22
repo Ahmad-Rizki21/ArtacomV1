@@ -6,15 +6,14 @@ use App\Models\Langganan;
 use App\Models\DataTeknis;
 use App\Models\HargaLayanan;
 use App\Models\Pelanggan;
-use Maatwebsite\Excel\Concerns\ToModel;
+use Maatwebsite\Excel\Concerns\ToCollection;
 use Maatwebsite\Excel\Concerns\WithHeadingRow;
-use Maatwebsite\Excel\Concerns\WithValidation;
-use Maatwebsite\Excel\Concerns\WithPreparation;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
 
-class LanggananImport implements ToModel, WithHeadingRow, WithValidation
+class LanggananImport implements ToCollection, WithHeadingRow
 {
     protected $importedIds = [];
     protected $defaultBrandId;
@@ -42,228 +41,220 @@ class LanggananImport implements ToModel, WithHeadingRow, WithValidation
     }
     
     /**
-     * Prepare data before validation
+     * @param Collection $rows
      */
-    public function prepareForValidation(array $row, int $index)
+    public function collection(Collection $rows)
     {
-        // Jika id_brand kosong atau tidak ada, gunakan default
-        if (!isset($row['id_brand']) || empty($row['id_brand'])) {
-            if ($this->defaultBrandId) {
-                $row['id_brand'] = $this->defaultBrandId;
-                Log::info('Menggunakan ID brand default', ['row' => $index + 2, 'id_brand' => $this->defaultBrandId]);
-            } else {
-                // Jika tidak ada default brand, skip validasi ini dengan mencatat warning
-                Log::warning('Tidak ada brand default tersedia untuk baris', ['row' => $index + 2]);
-            }
-        } else {
-            // Verifikasi apakah id_brand yang ada di data valid
-            $exists = HargaLayanan::where('id_brand', $row['id_brand'])->exists();
-            if (!$exists && $this->defaultBrandId) {
-                Log::warning('ID brand tidak valid, menggunakan default', [
-                    'row' => $index + 2, 
-                    'invalid_id' => $row['id_brand'], 
-                    'default_id' => $this->defaultBrandId
-                ]);
-                $row['id_brand'] = $this->defaultBrandId;
-            }
-        }
+        Log::info('Starting langganan import with ' . $rows->count() . ' rows');
         
-        // Pastikan layanan juga memiliki nilai default jika kosong
-        if (!isset($row['layanan']) || empty($row['layanan'])) {
-            $row['layanan'] = '10 Mbps';
-        }
+        $successCount = 0;
+        $failedCount = 0;
         
-        // Standardisasi status user
-        if (isset($row['user_status'])) {
-            $row['user_status'] = $this->normalizeUserStatus($row['user_status']);
-        } else {
-            // Jika kolom tidak ada atau kosong, default ke Aktif
-            $row['user_status'] = 'Aktif';
-        }
+        // Deactivate foreign key checks temporarily
+        DB::statement('SET FOREIGN_KEY_CHECKS=0;');
         
-        return $row;
-    }
-    
-    /**
-     * @param array $row
-     * @return \Illuminate\Database\Eloquent\Model|null
-     */
-    public function model(array $row)
-    {
-        // Log data impor untuk debugging
-        Log::info('Importing row', ['data' => $row]);
-
         try {
-            // Cek apakah pelanggan ada
-            $pelanggan = Pelanggan::find($row['pelanggan_id']);
-            if (!$pelanggan) {
-                Log::error('Pelanggan tidak ditemukan', ['pelanggan_id' => $row['pelanggan_id']]);
-                return null;
-            }
-
-            // Ambil data teknis berdasarkan pelanggan_id
-            $dataTeknis = DataTeknis::where('pelanggan_id', $row['pelanggan_id'])->first();
-            if (!$dataTeknis) {
-                Log::error('Data teknis tidak ditemukan untuk pelanggan', ['pelanggan_id' => $row['pelanggan_id']]);
-                return null;
-            }
-
-            // Cek apakah harga layanan ada - dengan error handling lebih baik
-            $hargaLayanan = HargaLayanan::where('id_brand', $row['id_brand'])->first();
-            if (!$hargaLayanan) {
-                Log::error('Brand layanan tidak ditemukan', ['id_brand' => $row['id_brand']]);
-                // Coba cari harga layanan default
-                $hargaLayanan = HargaLayanan::first();
-                if (!$hargaLayanan) {
-                    Log::error('Tidak ada brand layanan tersedia di database');
-                    return null;
-                }
-                Log::info('Menggunakan brand layanan default', ['id_brand' => $hargaLayanan->id_brand]);
-                // Update row id_brand agar valid untuk validasi selanjutnya
-                $row['id_brand'] = $hargaLayanan->id_brand;
-            }
-
-            // Transformasi tanggal jatuh tempo - biarkan NULL jika kosong
-            $tglJatuhTempo = null;
-            if (isset($row['tgl_jatuh_tempo']) && !empty($row['tgl_jatuh_tempo'])) {
-                $tglJatuhTempo = $this->transformDate($row['tgl_jatuh_tempo']);
-            }
-            
-            // Siapkan data untuk model
-            $data = [
-                'pelanggan_id' => $row['pelanggan_id'],
-                'id_brand' => $hargaLayanan->id_brand, // Gunakan id dari objek yang sudah dicek
-                'layanan' => $row['layanan'] ?? '10 Mbps',
-                'tgl_jatuh_tempo' => $tglJatuhTempo, // Bisa NULL
-                'metode_pembayaran' => $row['metode_pembayaran'] ?? 'otomatis',
-                'user_status' => $row['user_status'] ?? 'Aktif',
-                // Gunakan data dari data_teknis untuk memastikan nilai yang valid
-                'profile_pppoe' => $dataTeknis->profile_pppoe,
-                'olt' => $dataTeknis->olt,
-                'id_pelanggan' => $dataTeknis->id_pelanggan,
-            ];
-            
-           // Hitung total harga berdasarkan layanan dan brand - dengan validasi lebih baik
-            $harga = match ($data['layanan']) {
-                '10 Mbps' => $hargaLayanan->harga_10mbps ?? 0,
-                '20 Mbps' => $hargaLayanan->harga_20mbps ?? 0,
-                '30 Mbps' => $hargaLayanan->harga_30mbps ?? 0,
-                '50 Mbps' => $hargaLayanan->harga_50mbps ?? 0,
-                default => $hargaLayanan->harga_10mbps ?? 0, // Default ke 10Mbps jika tidak dikenali
-            };
-
-            $pajak = (($hargaLayanan->pajak ?? 0) / 100) * $harga;
-            $total = $harga + $pajak;
-            $data['total_harga_layanan_x_pajak'] = ceil($total / 1000) * 1000; // Pembulatan ke ribuan terdekat
-            
-            Log::info('Harga dihitung', [
-                'layanan' => $data['layanan'],
-                'harga_dasar' => $harga,
-                'pajak' => $pajak,
-                'total_harga' => $data['total_harga_layanan_x_pajak']
-            ]);
-            
-            // Cek apakah langganan sudah ada untuk pelanggan ini
-            $existingLangganan = DB::table('langganan')
-                ->where('pelanggan_id', $data['pelanggan_id'])
-                ->first();
-                
-            if ($existingLangganan) {
-                // Update langganan yang sudah ada - buat array untuk update
-                $updateData = [
-                    'id_brand' => $data['id_brand'],
-                    'layanan' => $data['layanan'],
-                    'metode_pembayaran' => $data['metode_pembayaran'],
-                    'user_status' => $data['user_status'],
-                    'profile_pppoe' => $data['profile_pppoe'],
-                    'olt' => $data['olt'],
-                    'id_pelanggan' => $data['id_pelanggan'],
-                    'total_harga_layanan_x_pajak' => $data['total_harga_layanan_x_pajak'],
-                    'updated_at' => now(),
-                ];
-                
-                // Hanya tambahkan tgl_jatuh_tempo jika tidak kosong
-                if ($data['tgl_jatuh_tempo'] !== null) {
-                    $updateData['tgl_jatuh_tempo'] = $data['tgl_jatuh_tempo'];
-                }
-                
-                DB::table('langganan')
-                    ->where('id', $existingLangganan->id)
-                    ->update($updateData);
+            // Process each row individually to avoid batch failures
+            foreach ($rows as $index => $row) {
+                try {
+                    // Log raw data for debugging
+                    Log::debug('Langganan raw data row ' . ($index + 2), (array)$row);
                     
-                $this->importedIds[] = $existingLangganan->id;
-                
-                Log::info('Data langganan berhasil diupdate', [
-                    'id' => $existingLangganan->id,
-                    'pelanggan_id' => $data['pelanggan_id']
-                ]);
-            } else {
-                // Buat langganan baru - buat array untuk insert
-                $insertData = [
-                    'pelanggan_id' => $data['pelanggan_id'],
-                    'id_brand' => $data['id_brand'],
-                    'layanan' => $data['layanan'],
-                    'metode_pembayaran' => $data['metode_pembayaran'],
-                    'user_status' => $data['user_status'],
-                    'profile_pppoe' => $data['profile_pppoe'],
-                    'olt' => $data['olt'],
-                    'id_pelanggan' => $data['id_pelanggan'],
-                    'total_harga_layanan_x_pajak' => $data['total_harga_layanan_x_pajak'],
-                    'created_at' => now(),
-                    'updated_at' => now(),
-                ];
-                
-                // Hanya tambahkan tgl_jatuh_tempo jika tidak kosong
-                if ($data['tgl_jatuh_tempo'] !== null) {
-                    $insertData['tgl_jatuh_tempo'] = $data['tgl_jatuh_tempo'];
+                    // Skip if row is empty
+                    if (empty($row) || count(array_filter((array)$row)) === 0) {
+                        Log::info('Skipping empty row ' . ($index + 2));
+                        continue;
+                    }
+                    
+                    // Extract and validate pelanggan_id
+                    $pelangganId = isset($row['pelanggan_id']) ? (int)$row['pelanggan_id'] : null;
+                    
+                    // Skip if no pelanggan_id
+                    if (!$pelangganId) {
+                        Log::warning('Skipping row ' . ($index + 2) . ': No pelanggan_id found');
+                        $failedCount++;
+                        continue;
+                    }
+                    
+                    // Check if pelanggan exists, create if not
+                    $pelangganExists = DB::table('pelanggan')->where('id', $pelangganId)->exists();
+                    if (!$pelangganExists) {
+                        // Try to create minimal record if we have a name
+                        $pelangganName = isset($row['id_pelanggan']) ? (string)$row['id_pelanggan'] : ('Pelanggan ' . $pelangganId);
+                        
+                        Log::warning('Pelanggan ID ' . $pelangganId . ' not found. Creating minimal record with name: ' . $pelangganName);
+                        
+                        DB::table('pelanggan')->insert([
+                            'id' => $pelangganId,
+                            'nama' => $pelangganName,
+                            'no_ktp' => '0000000000000000',
+                            'alamat' => 'Generated',
+                            'blok' => 'N/A',
+                            'unit' => 'N/A',
+                            'created_at' => now(),
+                            'updated_at' => now(),
+                        ]);
+                    }
+                    
+                    // Check/create data_teknis if needed
+                    $dataTeknis = DB::table('data_teknis')->where('pelanggan_id', $pelangganId)->first();
+                    if (!$dataTeknis) {
+                        // Create minimal data_teknis record
+                        $idPelanggan = isset($row['id_pelanggan']) ? (string)$row['id_pelanggan'] : ('DT-' . $pelangganId);
+                        
+                        Log::warning('Data teknis for pelanggan ID ' . $pelangganId . ' not found. Creating minimal record');
+                        
+                        $dataTeknisId = DB::table('data_teknis')->insertGetId([
+                            'pelanggan_id' => $pelangganId,
+                            'id_vlan' => '10',
+                            'id_pelanggan' => $idPelanggan,
+                            'password_pppoe' => 'support123.!!',
+                            'ip_pelanggan' => '192.168.0.' . $pelangganId,
+                            'profile_pppoe' => '10Mbps-a',
+                            'olt' => 'Default',
+                            'olt_custom' => 'N/A',
+                            'pon' => 0,
+                            'otb' => 0,
+                            'odc' => 0,
+                            'odp' => 0,
+                            'onu_power' => 0,
+                            'created_at' => now(),
+                            'updated_at' => now(),
+                        ]);
+                        
+                        // Get the created record
+                        $dataTeknis = DB::table('data_teknis')->find($dataTeknisId);
+                    }
+                    
+                    // Handle brand
+                    $brandId = isset($row['id_brand']) && !empty($row['id_brand']) ? (string)$row['id_brand'] : $this->defaultBrandId;
+                    
+                    // Check if brand exists
+                    $brandExists = $brandId ? DB::table('harga_layanan')->where('id_brand', $brandId)->exists() : false;
+                    if (!$brandExists) {
+                        Log::warning('Brand ID ' . $brandId . ' not found. Using default brand: ' . $this->defaultBrandId);
+                        $brandId = $this->defaultBrandId;
+                    }
+                    
+                    // Prepare layanan value
+                    $layanan = isset($row['layanan']) && !empty($row['layanan']) ? (string)$row['layanan'] : '10 Mbps';
+                    
+                    // Parse tanggal jatuh tempo
+                    $tglJatuhTempo = null;
+                    if (isset($row['tgl_jatuh_tempo']) && !empty($row['tgl_jatuh_tempo'])) {
+                        try {
+                            $tglJatuhTempo = $this->transformDate($row['tgl_jatuh_tempo']);
+                        } catch (\Exception $e) {
+                            Log::warning('Invalid date format for tgl_jatuh_tempo: ' . $row['tgl_jatuh_tempo']);
+                        }
+                    }
+                    
+                    // Normalize user status
+                    $userStatus = isset($row['user_status']) ? $this->normalizeUserStatus($row['user_status']) : 'Aktif';
+                    
+                    // Calculate price
+                    $hargaLayanan = DB::table('harga_layanan')->where('id_brand', $brandId)->first();
+                    $hargaValue = 0;
+                    $pajakValue = 0;
+                    
+                    if ($hargaLayanan) {
+                        // Get price based on layanan
+                        switch ($layanan) {
+                            case '10 Mbps':
+                                $hargaValue = $hargaLayanan->harga_10mbps ?? 0;
+                                break;
+                            case '20 Mbps':
+                                $hargaValue = $hargaLayanan->harga_20mbps ?? 0;
+                                break;
+                            case '30 Mbps':
+                                $hargaValue = $hargaLayanan->harga_30mbps ?? 0;
+                                break;
+                            case '50 Mbps':
+                                $hargaValue = $hargaLayanan->harga_50mbps ?? 0;
+                                break;
+                            default:
+                                $hargaValue = $hargaLayanan->harga_10mbps ?? 0;
+                        }
+                        
+                        // Calculate tax
+                        $pajakValue = (($hargaLayanan->pajak ?? 0) / 100) * $hargaValue;
+                    }
+                    
+                    $totalHarga = ceil(($hargaValue + $pajakValue) / 1000) * 1000;
+                    
+                    // Prepare data for insert/update
+                    $data = [
+                        'pelanggan_id' => $pelangganId,
+                        'id_brand' => $brandId,
+                        'layanan' => $layanan,
+                        'total_harga_layanan_x_pajak' => $totalHarga,
+                        'tgl_jatuh_tempo' => $tglJatuhTempo,
+                        'metode_pembayaran' => isset($row['metode_pembayaran']) ? (string)$row['metode_pembayaran'] : 'otomatis',
+                        'user_status' => $userStatus,
+                        'profile_pppoe' => $dataTeknis->profile_pppoe,
+                        'olt' => $dataTeknis->olt,
+                        'id_pelanggan' => $dataTeknis->id_pelanggan,
+                        'updated_at' => now(),
+                    ];
+                    
+                    Log::info('Processing langganan data', [
+                        'pelanggan_id' => $pelangganId,
+                        'brand' => $brandId,
+                        'layanan' => $layanan,
+                        'total_harga' => $totalHarga
+                    ]);
+                    
+                    // Check if record already exists
+                    $existingRecord = DB::table('langganan')->where('pelanggan_id', $pelangganId)->first();
+                    
+                    if ($existingRecord) {
+                        // Update existing record
+                        DB::table('langganan')
+                            ->where('id', $existingRecord->id)
+                            ->update($data);
+                            
+                        $this->importedIds[] = $existingRecord->id;
+                        
+                        Log::info('Updated langganan for pelanggan ID ' . $pelangganId);
+                    } else {
+                        // Insert new record
+                        $data['created_at'] = now();
+                        
+                        // Use ID from Excel if available
+                        if (isset($row['id']) && is_numeric($row['id'])) {
+                            $data['id'] = (int)$row['id'];
+                        }
+                        
+                        $id = DB::table('langganan')->insertGetId($data);
+                        
+                        $this->importedIds[] = $id;
+                        
+                        Log::info('Inserted new langganan for pelanggan ID ' . $pelangganId);
+                    }
+                    
+                    $successCount++;
+                    
+                } catch (\Exception $e) {
+                    // Log error but continue with next row
+                    Log::error('Error processing langganan row ' . ($index + 2), [
+                        'error' => $e->getMessage(),
+                        'trace' => $e->getTraceAsString(),
+                    ]);
+                    
+                    $failedCount++;
                 }
-                
-                $id = DB::table('langganan')->insertGetId($insertData);
-                
-                $this->importedIds[] = $id;
-                
-                Log::info('Data langganan baru berhasil dibuat', [
-                    'id' => $id,
-                    'pelanggan_id' => $data['pelanggan_id']
-                ]);
             }
-            
-            // Return null karena sudah simpan manual
-            return null;
-            
-        } catch (\Exception $e) {
-            Log::error('Error saat memproses baris import', [
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString(),
-                'row' => $row
-            ]);
-            
-            throw $e;
+        } finally {
+            // Re-enable foreign key checks
+            DB::statement('SET FOREIGN_KEY_CHECKS=1;');
         }
-    }
-
-    /**
-     * @return array
-     */
-    public function rules(): array
-    {
-        // Mungkin perlu melakukan query untuk mendapatkan semua ID brand yang valid
-        $validBrands = HargaLayanan::pluck('id_brand')->toArray();
         
-        return [
-            'pelanggan_id' => 'required|exists:pelanggan,id',
-            // Pastikan id_brand valid tapi bisa null
-            'id_brand' => ['nullable', function ($attribute, $value, $fail) use ($validBrands) {
-                if ($value && !in_array($value, $validBrands)) {
-                    // Jangan gagalkan validasi, kita akan atur di prepareForValidation
-                    // $fail("ID brand tidak valid.");
-                }
-            }],
-            'layanan' => 'nullable',
-            'tgl_jatuh_tempo' => 'nullable',
-            'user_status' => 'nullable',
-            'metode_pembayaran' => 'nullable',
-        ];
+        Log::info('Langganan import completed', [
+            'total' => $rows->count(),
+            'success' => $successCount,
+            'failed' => $failedCount,
+            'imported_ids' => $this->importedIds
+        ]);
     }
     
     /**
@@ -319,24 +310,6 @@ class LanggananImport implements ToModel, WithHeadingRow, WithValidation
             Log::warning('Format tanggal tidak valid, mengembalikan null', ['value' => $value]);
             return null; // Tetap kembalikan NULL jika format tanggal tidak valid
         }
-    }
-
-    public function withValidator($validator)
-    {
-        $validator->after(function ($validator) {
-            foreach ($validator->getData() as $rowIndex => $row) {
-                if (isset($row['tgl_jatuh_tempo']) && !empty($row['tgl_jatuh_tempo'])) {
-                    try {
-                        // Coba parse tanggal untuk memastikan valid
-                        Carbon::parse($row['tgl_jatuh_tempo']);
-                    } catch (\Exception $e) {
-                        // Jika parse gagal, tambahkan error
-                        $validator->errors()->add($rowIndex . '.tgl_jatuh_tempo', 
-                            'Format tanggal tidak valid. Gunakan format yang bisa dikenali Carbon.');
-                    }
-                }
-            }
-        });
     }
     
     /**
