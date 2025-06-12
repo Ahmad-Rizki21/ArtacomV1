@@ -30,3 +30,8 @@ Route::post('/invoice/update-status', [PaymentController::class, 'updateStatus']
 // Optional: Hapus jika tidak diperlukan
 // Route::get('/invoice/{invoiceNumber}/check-xendit-status', [XenditInvoiceStatusController::class, 'forceCheckStatus'])
 //     ->name('invoice.force-xendit-check');
+Route::middleware('auth:sanctum')->get('/check-notifications', function (Request $request) {
+    $user = $request->user();
+    $unread = $user->unreadNotifications()->count();
+    return response()->json(['unread' => $unread]);
+});

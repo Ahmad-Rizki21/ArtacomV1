@@ -33,6 +33,16 @@ class Pelanggan extends Model
         'created_at',
         'updated_at',
     ];
+
+    protected static function boot()
+    {
+        parent::boot();
+
+        static::created(function ($pelanggan) {
+            event(new \App\Events\PelangganCreated($pelanggan));
+        });
+    }
+
     
     // Mutator untuk memastikan nomor telepon selalu memiliki leading zero
     public function setNoTelpAttribute($value)

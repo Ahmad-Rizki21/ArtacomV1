@@ -23,6 +23,10 @@ class EventServiceProvider extends ServiceProvider
             SendEmailVerificationNotification::class,
             LanggananCreatedWithoutDataTeknis::class => [
                 SendNocNotification::class,
+
+            ],
+                \App\Events\PelangganCreated::class => [
+                \App\Listeners\SendNocNotificationToCreateDataTeknis::class,
             ],
         ],
         

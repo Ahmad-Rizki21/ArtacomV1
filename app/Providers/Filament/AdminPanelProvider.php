@@ -134,17 +134,17 @@ class AdminPanelProvider extends PanelProvider
                 ])
                 ->withLoadTime('This page loaded in'),
                 DashStackThemePlugin::make(),
-                (FilamentSpatieLaravelHealthPlugin::make()),
+                // (FilamentSpatieLaravelHealthPlugin::make()),
                 // EnvironmentIndicatorPlugin::make(),
-                (\TomatoPHP\FilamentArtisan\FilamentArtisanPlugin::make()),
+                // (\TomatoPHP\FilamentArtisan\FilamentArtisanPlugin::make()),
                 // \TomatoPHP\FilamentSettingsHub\FilamentSettingsHubPlugin::make()
                 // ->allowSiteSettings()
                 // ->allowSocialMenuSettings(),
                 // ->allowShield()
                 FilamentApexChartsPlugin::make(),
                     
-                    FilamentJobsMonitorPlugin::make()
-                        ->enableNavigation(),
+                    // FilamentJobsMonitorPlugin::make()
+                    //     ->enableNavigation(),
                         
                 //FilamentLaravelLogPlugin::make(),
 
