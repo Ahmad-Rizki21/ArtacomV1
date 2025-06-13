@@ -253,11 +253,13 @@ class PelangganResource extends Resource
     {
         return $table
             ->columns([
-                TextColumn::make('id')
-                    ->label('No.')
-                    ->sortable()
-                    ->searchable()
-                    ->toggleable(),
+               TextColumn::make('id')
+                ->label('No.')
+                ->rowIndex()
+                ->sortable(false)
+                ->searchable(false)
+                ->toggleable(),
+
 
                 TextColumn::make('no_ktp')
                     ->label('No. KTP')

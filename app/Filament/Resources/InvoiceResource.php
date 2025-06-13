@@ -220,48 +220,54 @@ class InvoiceResource extends Resource
 
     // Method untuk mengupdate data invoice berdasarkan pelanggan
         public static function updateInvoiceData(callable $set, $pelangganId)
-    {
-        try {
-            $pelanggan = Pelanggan::findOrFail($pelangganId);
-            $dataTeknis = DataTeknis::where('pelanggan_id', $pelangganId)->firstOrFail();
-            $langganan = Langganan::where('pelanggan_id', $pelangganId)->firstOrFail();
-            
-            // Set pelanggan data
-            $set('no_telp', $pelanggan->no_telp);
-            $set('email', $pelanggan->email);
-            $set('id_pelanggan', $dataTeknis->id_pelanggan);
+{
+    try {
+        $pelanggan = Pelanggan::findOrFail($pelangganId);
+        $dataTeknis = DataTeknis::where('pelanggan_id', $pelangganId)->first();
+        $langganan = Langganan::where('pelanggan_id', $pelangganId)->first();
+        $hargaLayanan = null;
 
-            // Set layanan data
-            $hargaLayanan = HargaLayanan::where('id_brand', $langganan->id_brand)->firstOrFail();
-            $set('brand', $hargaLayanan->brand);
-            $set('total_harga', $langganan->total_harga_layanan_x_pajak);
-
-            // Set invoice date
-            $invoiceDate = now();
-            $set('tgl_invoice', $invoiceDate);
-
-            // Set due date from subscription
-            if ($langganan->tgl_jatuh_tempo) {
-                $set('tgl_jatuh_tempo', Carbon::parse($langganan->tgl_jatuh_tempo));
-                Log::info('Setting due date from subscription', [
-                    'pelanggan_id' => $pelangganId,
-                    'due_date' => $langganan->tgl_jatuh_tempo
-                ]);
-            } else {
-                $set('tgl_jatuh_tempo', $invoiceDate);
-                Log::info('Setting due date to invoice date (no subscription due date found)', [
-                    'pelanggan_id' => $pelangganId,
-                    'due_date' => $invoiceDate
-                ]);
-            }
-            
-        } catch (\Exception $e) {
-            Log::error('Error updating invoice data', [
-                'pelanggan_id' => $pelangganId,
-                'error' => $e->getMessage()
-            ]);
+        if ($langganan) {
+            $hargaLayanan = HargaLayanan::where('id_brand', $langganan->id_brand)->first();
         }
+
+        // Set data pelanggan
+        $set('no_telp', $pelanggan->no_telp ?? '');
+        $set('email', $pelanggan->email ?? '');
+
+        // Set id_pelanggan dari data teknis jika ada, jika tidak kosongkan
+        $set('id_pelanggan', $dataTeknis ? $dataTeknis->id_pelanggan : '');
+
+        // Set data brand dan total harga
+        $set('brand', $hargaLayanan->brand ?? '');
+        $set('total_harga', $langganan->total_harga_layanan_x_pajak ?? 0);
+
+        // Set tanggal invoice dan jatuh tempo
+        $invoiceDate = now();
+        $set('tgl_invoice', $invoiceDate);
+
+        if ($langganan && $langganan->tgl_jatuh_tempo) {
+            $set('tgl_jatuh_tempo', Carbon::parse($langganan->tgl_jatuh_tempo));
+        } else {
+            $set('tgl_jatuh_tempo', $invoiceDate);
+        }
+
+    } catch (\Exception $e) {
+        Log::error('Error updating invoice data', [
+            'pelanggan_id' => $pelangganId,
+            'error' => $e->getMessage()
+        ]);
+        // Reset fields jika error
+        $set('no_telp', '');
+        $set('email', '');
+        $set('id_pelanggan', '');
+        $set('brand', '');
+        $set('total_harga', 0);
+        $set('tgl_invoice', now());
+        $set('tgl_jatuh_tempo', now());
     }
+}
+
 
     public static function afterCreate($record)
     {

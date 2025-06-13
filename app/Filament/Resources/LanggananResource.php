@@ -124,8 +124,14 @@ class LanggananResource extends Resource
                                     ->label('Brand Layanan')
                                     ->placeholder('Brand layanan akan otomatis terisi dari data pelanggan')
                                     ->disabled()
-                                    ->dehydrated(false),
-                            ]),
+                                    ->dehydrated(false)
+                                    ->afterStateHydrated(function ($state, $set, $record) {
+                                        if ($record) {
+                                            $brand = HargaLayanan::where('id_brand', $record->id_brand)->first();
+                                            $set('brand_display', $brand->brand ?? 'Tidak ada data');
+                                        }
+                                            }),
+                                ]),
 
                         TextInput::make('id_brand')
                             ->hidden()
@@ -149,8 +155,9 @@ class LanggananResource extends Resource
                                 }
 
                                 if ($pelanggan->id_brand || $pelanggan->layanan) {
-                                    $info .= "<div class='mt-2 p-2 bg-blue-50 rounded-md border border-blue-200'>";
-                                    $info .= "<div class='font-medium text-blue-700'>Data Default Layanan:</div>";
+                                    // Tambahkan kelas CSS khusus untuk style dark mode
+                                    $info .= "<div class='mt-2 p-2 rounded-md border' style='background-color: var(--color-primary-50); border-color: var(--color-primary-200); color: var(--color-primary-700);'>";
+                                    $info .= "<div class='font-medium'>Data Default Layanan:</div>";
                                     $brandName = HargaLayanan::where('id_brand', $pelanggan->id_brand)->first()?->brand ?? $pelanggan->id_brand;
                                     $info .= "<div><strong>Brand Default:</strong> " . $brandName . "</div>";
                                     $info .= "<div><strong>Paket Default:</strong> " . ($pelanggan->layanan ?? 'Belum diatur') . "</div>";
@@ -175,7 +182,12 @@ class LanggananResource extends Resource
                                     ->label('Paket Layanan')
                                     ->placeholder('Paket layanan akan otomatis terisi dari data pelanggan')
                                     ->disabled()
-                                    ->dehydrated(false),
+                                    ->dehydrated(false)
+                                    ->afterStateHydrated(function ($state, $set, $record) {
+                                        if ($record) {
+                                            $set('layanan_display', $record->layanan ?? 'Tidak ada data');
+                                        }
+                                    }),
 
                                 TextInput::make('layanan')
                                     ->hidden()
@@ -253,8 +265,10 @@ class LanggananResource extends Resource
                                 if (!$pelanggan) return 'Pelanggan tidak ditemukan';
 
                                 $info = "<div class='space-y-3'>";
-                                $info .= "<div class='p-3 bg-gray-50 rounded-lg border border-gray-200'>";
-                                $info .= "<div class='font-medium text-gray-700 mb-1'>Data Pribadi:</div>";
+
+                                // Style untuk Data Pribadi
+                                $info .= "<div class='p-3 rounded-lg border' style='background-color: var(--color-primary-50); border-color: var(--color-primary-200); color: var(--color-primary-700);'>";
+                                $info .= "<div class='font-medium mb-1'>Data Pribadi:</div>";
                                 $info .= "<div class='grid grid-cols-2 gap-2 text-sm'>";
                                 $info .= "<div><strong>Nama:</strong> {$pelanggan->nama}</div>";
                                 $info .= "<div><strong>No. KTP:</strong> {$pelanggan->no_ktp}</div>";
@@ -262,8 +276,9 @@ class LanggananResource extends Resource
                                 $info .= "<div><strong>No. Telp:</strong> {$pelanggan->no_telp}</div>";
                                 $info .= "</div></div>";
 
-                                $info .= "<div class='p-3 bg-gray-50 rounded-lg border border-gray-200'>";
-                                $info .= "<div class='font-medium text-gray-700 mb-1'>Alamat:</div>";
+                                // Style untuk Alamat
+                                $info .= "<div class='p-3 rounded-lg border' style='background-color: var(--color-primary-50); border-color: var(--color-primary-200); color: var(--color-primary-700);'>";
+                                $info .= "<div class='font-medium mb-1'>Alamat:</div>";
                                 $info .= "<div class='text-sm'>";
                                 $info .= "<div><strong>Alamat:</strong> " . ($pelanggan->alamat === 'Lainnya' ? $pelanggan->alamat_custom : $pelanggan->alamat) . "</div>";
                                 $info .= "<div><strong>Blok/Unit:</strong> {$pelanggan->blok}/{$pelanggan->unit}</div>";
@@ -272,9 +287,10 @@ class LanggananResource extends Resource
                                 }
                                 $info .= "</div></div>";
 
+                                // Style untuk Data Default Layanan
                                 if ($pelanggan->id_brand || $pelanggan->layanan) {
-                                    $info .= "<div class='p-3 bg-blue-50 rounded-lg border border-blue-200'>";
-                                    $info .= "<div class='font-medium text-blue-700 mb-1'>Data Default Layanan:</div>";
+                                    $info .= "<div class='p-3 rounded-lg border' style='background-color: var(--color-primary-50); border-color: var(--color-primary-200); color: var(--color-primary-700);'>";
+                                    $info .= "<div class='font-medium mb-1'>Data Default Layanan:</div>";
                                     $info .= "<div class='text-sm space-y-1'>";
                                     $brandName = HargaLayanan::where('id_brand', $pelanggan->id_brand)->first()?->brand ?? $pelanggan->id_brand;
                                     $info .= "<div><strong>Brand Default:</strong> " . $brandName . "</div>";

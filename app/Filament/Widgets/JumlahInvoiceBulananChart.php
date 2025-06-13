@@ -65,46 +65,64 @@ class JumlahInvoiceBulananChart extends ChartWidget
     }
     
     // Mengatur tinggi chart
-    protected function getOptions(): array
-    {
-        return [
-            'maintainAspectRatio' => false,
-            'height' => 350,
-            'scales' => [
-                'y' => [
-                    'beginAtZero' => true,
-                    'grid' => [
-                        'color' => 'rgba(200, 200, 200, 0.2)',
-                    ],
+   protected function getOptions(): array
+{
+    $isDarkMode = config('filament.layout.theme') === 'dark';
+
+    $lineColor = $isDarkMode ? '#FFFFFF' : '#000000'; // Putih untuk dark mode, hitam untuk light mode
+    $gridColor = $isDarkMode ? 'rgba(200, 200, 200, 0.2)' : 'rgba(0, 0, 0, 0.1)';
+    $legendTextColor = $isDarkMode ? '#FFFFFF' : '#374151';
+
+    return [
+        'maintainAspectRatio' => false,
+        'height' => 350,
+        'scales' => [
+            'y' => [
+                'beginAtZero' => true,
+                'grid' => [
+                    'color' => $gridColor,
                 ],
-                'x' => [
-                    'grid' => [
-                        'color' => 'rgba(200, 200, 200, 0.2)',
-                    ],
+            ],
+            'x' => [
+                'grid' => [
+                    'color' => $gridColor,
+                ],
+            ]
+        ],
+        'plugins' => [
+            'legend' => [
+                'display' => true,
+                'position' => 'bottom',
+                'labels' => [
+                    'color' => $legendTextColor,
                 ]
             ],
-            'plugins' => [
-                'legend' => [
-                    'display' => true,
-                    'position' => 'bottom',
-                    'labels' => [
-                        'color' => '#ffffff',
-                    ]
-                ],
-                'tooltip' => [
-                    'callbacks' => [
-                        'label' => '
-                            function(context) {
-                                var label = context.dataset.label || "";
-                                var value = context.parsed.y || 0;
-                                return label + ": " + value;
-                            }
-                        '
-                    ]
+            'tooltip' => [
+                'callbacks' => [
+                    'label' => '
+                        function(context) {
+                            var label = context.dataset.label || "";
+                            var value = context.parsed.y || 0;
+                            return label + ": " + value;
+                        }
+                    '
                 ]
             ]
-        ];
-    }
+        ],
+        // Override warna garis untuk dataset tipe line
+        'datasets' => [
+            [
+                'type' => 'line',
+                'borderColor' => $lineColor,
+                'backgroundColor' => 'transparent',
+                'borderWidth' => 2,
+                'tension' => 0.1,
+                'fill' => false,
+            ]
+        ],
+    ];
+}
+
 
     protected function getData(): array
     {

@@ -99,21 +99,33 @@ class DataTeknisResource extends Resource
                                         ->helperText('Paket kecepatan yang digunakan')
                                         ->disabled()
                                         ->dehydrated(false)
-                                        ->default(fn ($record) => $record ? ($record->langganan->layanan ?? $record->pelanggan->layanan ?? 'Tidak ada data') : 'Tidak ada data'),
+                                        ->afterStateHydrated(function ($state, $set, $record) {
+                                            if ($record) {
+                                                $set('info_layanan', $record->langganan->layanan ?? $record->pelanggan->layanan ?? 'Tidak ada data');
+                                            }
+                                        }),
 
                                     TextInput::make('info_brand')
                                         ->label('Brand Layanan')
                                         ->helperText('Provider internet yang digunakan')
                                         ->disabled()
                                         ->dehydrated(false)
-                                        ->default(fn ($record) => $record ? ($record->langganan->id_brand ?? $record->pelanggan->id_brand ?? 'Tidak ada data') : 'Tidak ada data'),
+                                        ->afterStateHydrated(function ($state, $set, $record) {
+                                            if ($record) {
+                                                $set('info_brand', $record->langganan->id_brand ?? $record->pelanggan->id_brand ?? 'Tidak ada data');
+                                            }
+                                        }),
 
                                     TextInput::make('info_status')
                                         ->label('Status Layanan')
                                         ->helperText('Status layanan internet')
                                         ->disabled()
                                         ->dehydrated(false)
-                                        ->default(fn ($record) => $record ? ($record->langganan->user_status ?? 'Belum Berlangganan') : 'Tidak ada data'),
+                                        ->afterStateHydrated(function ($state, $set, $record) {
+                                            if ($record) {
+                                                $set('info_status', $record->langganan->user_status ?? 'Belum Berlangganan');
+                                            }
+                                        }),
                                     ]),
                                     
                                 Placeholder::make('info_layanan_notes')
@@ -205,11 +217,21 @@ class DataTeknisResource extends Resource
                                             ->helperText('Paket kecepatan internet yang digunakan'),
                                             
                                         TextInput::make('info_extracted_speed')
-                                            ->label('Kecepatan Internet')
-                                            ->helperText('Kecepatan berdasarkan profile PPPoE')
-                                            ->disabled()
-                                            ->dehydrated(false)
-                                            ->visible(fn ($get) => !empty($get('profile_pppoe'))),
+                                        ->label('Kecepatan Internet')
+                                        ->helperText('Kecepatan berdasarkan profile PPPoE')
+                                        ->disabled()
+                                        ->dehydrated(false)
+                                        ->visible(fn ($get) => !empty($get('profile_pppoe')))
+                                        ->afterStateHydrated(function ($state, $set, $record) {
+                                            if ($record && !empty($record->profile_pppoe)) {
+                                                $matches = [];
+                                                if (preg_match('/(\d+)Mbps/', $record->profile_pppoe, $matches)) {
+                                                    $set('info_extracted_speed', $matches[1] . ' Mbps');
+                                                } else {
+                                                    $set('info_extracted_speed', 'Tidak dapat menentukan kecepatan');
+                                                }
+                                            }
+                                        }),
                                     ]),
                             ]),
 
@@ -331,10 +353,11 @@ class DataTeknisResource extends Resource
         return $table
             ->columns([
                 TextColumn::make('id')
-                    ->label('No.')
-                    ->sortable()
-                    ->searchable()
-                    ->toggleable(),
+                ->label('No.')
+                ->rowIndex()
+                ->sortable(false)
+                ->searchable(false)
+                ->toggleable(),
 
                 TextColumn::make('pelanggan.nama')
                     ->label('Pelanggan')
