@@ -73,31 +73,26 @@ class MikrotikServerResource extends Resource
                                 ->color('primary')
                                 ->action(function ($livewire) {
                                     $data = $livewire->form->getState();
-                                    
+
                                     try {
-                                        // Lakukan test koneksi
                                         $client = new Client([
                                             'host' => $data['host_ip'],
                                             'user' => $data['username'],
                                             'pass' => $data['password'],
-                                            'port' => $data['port'] ?? 8728,
+                                            'port' => isset($data['port']) ? (int)$data['port'] : 8728,
                                             'timeout' => 10,
-                                            'attempts' => 2
+                                            'attempts' => 2,
                                         ]);
 
-                                        // Ambil informasi sistem
                                         $query = new Query('/system/resource/print');
                                         $response = $client->query($query)->read();
 
-                                        // Tampilkan notifikasi sukses
                                         \Filament\Notifications\Notification::make()
                                             ->title('Koneksi Berhasil')
                                             ->body('Terhubung ke Server Mikrotik')
                                             ->success()
                                             ->send();
-
                                     } catch (\Exception $e) {
-                                        // Tampilkan notifikasi gagal
                                         \Filament\Notifications\Notification::make()
                                             ->title('Koneksi Gagal')
                                             ->body($e->getMessage())
@@ -124,8 +119,11 @@ class MikrotikServerResource extends Resource
                     ->sortable(),
                 
                 TextColumn::make('host_ip')
-                    ->label('Host/IP')
-                    ->searchable(),
+                ->label('Host/IP:Port')
+                ->searchable()
+                ->formatStateUsing(function ($state, MikrotikServer $record) {
+                    return $state . ':' . ($record->port ?? 8728);
+                }),
                 
                 BadgeColumn::make('last_connection_status')
                     ->label('Connection Status')

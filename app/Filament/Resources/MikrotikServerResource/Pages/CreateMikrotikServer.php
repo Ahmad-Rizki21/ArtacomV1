@@ -10,3 +10,4 @@ class CreateMikrotikServer extends CreateRecord
 {
     protected static string $resource = MikrotikServerResource::class;
 }
+

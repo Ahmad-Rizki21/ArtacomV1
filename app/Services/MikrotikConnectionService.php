@@ -170,24 +170,27 @@ class MikrotikConnectionService
         try {
             if (!$server) {
                 $server = MikrotikServer::first();
-                
+
                 if (!$server) {
                     Log::error('Mikrotik Connection Error: No server found in database');
                     return null;
                 }
             }
-            
+
+            // Pastikan port bertipe integer
+            $port = isset($server->port) ? (int)$server->port : 8728;
+
             Log::info('Connecting to Mikrotik', [
                 'host' => $server->host_ip,
                 'user' => $server->username,
-                'port' => $server->port ?? 8728
+                'port' => $port
             ]);
-            
+
             $client = new Client([
                 'host' => $server->host_ip,
                 'user' => $server->username,
                 'pass' => $server->password,
-                'port' => $server->port ?? 8728,
+                'port' => $port,
                 'timeout' => 10,
                 'attempts' => 2
             ]);
@@ -201,6 +204,7 @@ class MikrotikConnectionService
             return null;
         }
     }
+
 
     /**
      * Ubah profile PPPoE Secret dan aktifkan akun
