@@ -2,6 +2,7 @@
 
 namespace App\Providers;
 
+use App\Services\MikrotikPppoeSecretService;
 use Illuminate\Support\ServiceProvider;
 use App\Services\MikrotikConnectionService;
 use App\Services\MikrotikSubscriptionManager;
@@ -19,6 +20,12 @@ class MikrotikServiceProvider extends ServiceProvider
 
         $this->app->singleton(MikrotikSubscriptionManager::class, function ($app) {
             return new MikrotikSubscriptionManager(
+                $app->make(MikrotikConnectionService::class)
+            );
+        });
+
+        $this->app->singleton(MikrotikPppoeSecretService::class, function ($app) {
+            return new MikrotikPppoeSecretService(
                 $app->make(MikrotikConnectionService::class)
             );
         });

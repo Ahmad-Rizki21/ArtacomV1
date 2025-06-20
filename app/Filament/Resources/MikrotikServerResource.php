@@ -118,19 +118,19 @@ class MikrotikServerResource extends Resource
                     ->searchable()
                     ->sortable(),
                 
+                // Pilih salah satu solusi di atas
                 TextColumn::make('host_ip')
-                ->label('Host/IP:Port')
-                ->searchable()
-                ->formatStateUsing(function ($state, MikrotikServer $record) {
-                    return $state . ':' . ($record->port ?? 8728);
-                }),
+                    ->label('Host/IP:Port')
+                    ->formatStateUsing(function ($state, MikrotikServer $record) {
+                        return $state.':'.($record->port ?? 8728);
+                    })
+                    ->searchable(),
                 
                 BadgeColumn::make('last_connection_status')
-                    ->label('Connection Status')
+                    ->label('Status')
                     ->colors([
                         'success' => 'success',
                         'failed' => 'danger',
-                        'pending' => 'warning'
                     ]),
                 
                 IconColumn::make('is_active')
@@ -142,7 +142,7 @@ class MikrotikServerResource extends Resource
                     ->label('Active Status')
             ])
             ->actions([
-                Tables\Actions\ViewAction::make(),
+                // Tables\Actions\ViewAction::make(),
                 Tables\Actions\EditAction::make(),
                 
                 // Action untuk test koneksi di tabel

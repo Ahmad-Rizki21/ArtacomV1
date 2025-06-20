@@ -51,9 +51,10 @@ class PelangganImport implements ToCollection, WithHeadingRow, WithCustomCsvSett
             foreach ($rows as $index => $row) {
                 try {
                     // Skip jika row adalah header atau kosong
-                    if ($index === 0 || empty($row) || count(array_filter((array)$row)) === 0) {
+                    if (empty($row) || count(array_filter((array)$row)) === 0) {
                         continue;
                     }
+
                     
                     // Deteksi ID di Excel
                     $excelId = null;

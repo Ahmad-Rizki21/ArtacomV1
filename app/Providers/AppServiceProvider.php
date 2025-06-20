@@ -11,6 +11,8 @@ use Spatie\Health\Facades\Health;
 use Spatie\Health\Checks\Checks\OptimizedAppCheck;
 use Spatie\Health\Checks\Checks\DebugModeCheck;
 use Spatie\Health\Checks\Checks\EnvironmentCheck;
+use App\Observers\DataTeknisObserver;
+use App\Models\DataTeknis;
 use Spatie\CpuLoadHealthCheck\CpuLoadCheck;
 use Spatie\MemoryUsageHealthCheck\MemoryUsageCheck;
 
@@ -33,6 +35,8 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot()
     {
+        DataTeknis::observe(DataTeknisObserver::class);
+        
         Schema::defaultStringLength(191);
         Health::checks([
             OptimizedAppCheck::new(),

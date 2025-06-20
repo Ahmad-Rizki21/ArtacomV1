@@ -21,6 +21,7 @@ class DataTeknisController extends Controller
             'pageTitle' => 'Ekspor Data Teknis'
         ]);
     }
+    
 
     /**
      * Proses ekspor Data Teknis

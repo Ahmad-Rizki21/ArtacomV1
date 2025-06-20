@@ -28,6 +28,9 @@ class EventServiceProvider extends ServiceProvider
                 \App\Events\PelangganCreated::class => [
                 \App\Listeners\SendNocNotificationToCreateDataTeknis::class,
             ],
+
+            
+
         ],
         
         // Perbaiki referensi listener disini

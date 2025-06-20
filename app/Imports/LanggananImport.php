@@ -20,29 +20,39 @@ class LanggananImport implements ToCollection, WithHeadingRow
     
     public function __construct()
     {
-        // Ambil ID brand pertama yang ada di database saat inisialisasi
         $this->defaultBrandId = $this->getDefaultBrandId();
         Log::info('Default Brand ID set to', ['id' => $this->defaultBrandId]);
     }
     
-    /**
-     * Mendapatkan ID brand default yang valid dari database
-     */
     protected function getDefaultBrandId()
     {
         $brand = HargaLayanan::first();
         if ($brand) {
             return $brand->id_brand;
         }
-        
-        // Jika tidak ada brand di database, log warning
         Log::warning('Tidak ada harga layanan tersedia di database');
         return null;
     }
-    
+
     /**
-     * @param Collection $rows
+     * Konversi Excel serial date ke Carbon
      */
+    protected function excelDateToCarbon($value)
+    {
+        if (is_numeric($value)) {
+            // Excel serial date offset 25569, 86400 detik per hari
+            $timestamp = ($value - 25569) * 86400;
+            return Carbon::createFromTimestamp($timestamp)->startOfDay();
+        }
+
+        try {
+            return Carbon::parse($value);
+        } catch (\Exception $e) {
+            Log::warning('Tanggal tidak valid saat parsing: ' . $value);
+            return null;
+        }
+    }
+    
     public function collection(Collection $rows)
     {
         Log::info('Starting langganan import with ' . $rows->count() . ' rows');
@@ -50,40 +60,29 @@ class LanggananImport implements ToCollection, WithHeadingRow
         $successCount = 0;
         $failedCount = 0;
         
-        // Deactivate foreign key checks temporarily
         DB::statement('SET FOREIGN_KEY_CHECKS=0;');
         
         try {
-            // Process each row individually to avoid batch failures
             foreach ($rows as $index => $row) {
                 try {
-                    // Log raw data for debugging
                     Log::debug('Langganan raw data row ' . ($index + 2), (array)$row);
                     
-                    // Skip if row is empty
                     if (empty($row) || count(array_filter((array)$row)) === 0) {
                         Log::info('Skipping empty row ' . ($index + 2));
                         continue;
                     }
                     
-                    // Extract and validate pelanggan_id
                     $pelangganId = isset($row['pelanggan_id']) ? (int)$row['pelanggan_id'] : null;
-                    
-                    // Skip if no pelanggan_id
                     if (!$pelangganId) {
                         Log::warning('Skipping row ' . ($index + 2) . ': No pelanggan_id found');
                         $failedCount++;
                         continue;
                     }
                     
-                    // Check if pelanggan exists, create if not
                     $pelangganExists = DB::table('pelanggan')->where('id', $pelangganId)->exists();
                     if (!$pelangganExists) {
-                        // Try to create minimal record if we have a name
                         $pelangganName = isset($row['id_pelanggan']) ? (string)$row['id_pelanggan'] : ('Pelanggan ' . $pelangganId);
-                        
                         Log::warning('Pelanggan ID ' . $pelangganId . ' not found. Creating minimal record with name: ' . $pelangganName);
-                        
                         DB::table('pelanggan')->insert([
                             'id' => $pelangganId,
                             'nama' => $pelangganName,
@@ -95,15 +94,11 @@ class LanggananImport implements ToCollection, WithHeadingRow
                             'updated_at' => now(),
                         ]);
                     }
-                    
-                    // Check/create data_teknis if needed
+
                     $dataTeknis = DB::table('data_teknis')->where('pelanggan_id', $pelangganId)->first();
                     if (!$dataTeknis) {
-                        // Create minimal data_teknis record
                         $idPelanggan = isset($row['id_pelanggan']) ? (string)$row['id_pelanggan'] : ('DT-' . $pelangganId);
-                        
                         Log::warning('Data teknis for pelanggan ID ' . $pelangganId . ' not found. Creating minimal record');
-                        
                         $dataTeknisId = DB::table('data_teknis')->insertGetId([
                             'pelanggan_id' => $pelangganId,
                             'id_vlan' => '10',
@@ -121,44 +116,36 @@ class LanggananImport implements ToCollection, WithHeadingRow
                             'created_at' => now(),
                             'updated_at' => now(),
                         ]);
-                        
-                        // Get the created record
                         $dataTeknis = DB::table('data_teknis')->find($dataTeknisId);
                     }
-                    
-                    // Handle brand
+
                     $brandId = isset($row['id_brand']) && !empty($row['id_brand']) ? (string)$row['id_brand'] : $this->defaultBrandId;
-                    
-                    // Check if brand exists
                     $brandExists = $brandId ? DB::table('harga_layanan')->where('id_brand', $brandId)->exists() : false;
                     if (!$brandExists) {
                         Log::warning('Brand ID ' . $brandId . ' not found. Using default brand: ' . $this->defaultBrandId);
                         $brandId = $this->defaultBrandId;
                     }
-                    
-                    // Prepare layanan value
+
                     $layanan = isset($row['layanan']) && !empty($row['layanan']) ? (string)$row['layanan'] : '10 Mbps';
-                    
-                    // Parse tanggal jatuh tempo
+
+                    // Parse tanggal dengan konversi Excel serial date
                     $tglJatuhTempo = null;
                     if (isset($row['tgl_jatuh_tempo']) && !empty($row['tgl_jatuh_tempo'])) {
-                        try {
-                            $tglJatuhTempo = $this->transformDate($row['tgl_jatuh_tempo']);
-                        } catch (\Exception $e) {
-                            Log::warning('Invalid date format for tgl_jatuh_tempo: ' . $row['tgl_jatuh_tempo']);
-                        }
+                        $tglJatuhTempo = $this->excelDateToCarbon($row['tgl_jatuh_tempo']);
                     }
-                    
-                    // Normalize user status
+
+                    $tglInvoiceTerakhir = null;
+                    if (isset($row['tgl_invoice_terakhir']) && !empty($row['tgl_invoice_terakhir'])) {
+                        $tglInvoiceTerakhir = $this->excelDateToCarbon($row['tgl_invoice_terakhir']);
+                    }
+
                     $userStatus = isset($row['user_status']) ? $this->normalizeUserStatus($row['user_status']) : 'Aktif';
-                    
-                    // Calculate price
+
                     $hargaLayanan = DB::table('harga_layanan')->where('id_brand', $brandId)->first();
                     $hargaValue = 0;
                     $pajakValue = 0;
-                    
+
                     if ($hargaLayanan) {
-                        // Get price based on layanan
                         switch ($layanan) {
                             case '10 Mbps':
                                 $hargaValue = $hargaLayanan->harga_10mbps ?? 0;
@@ -175,80 +162,64 @@ class LanggananImport implements ToCollection, WithHeadingRow
                             default:
                                 $hargaValue = $hargaLayanan->harga_10mbps ?? 0;
                         }
-                        
-                        // Calculate tax
                         $pajakValue = (($hargaLayanan->pajak ?? 0) / 100) * $hargaValue;
                     }
-                    
+
                     $totalHarga = ceil(($hargaValue + $pajakValue) / 1000) * 1000;
-                    
-                    // Prepare data for insert/update
+
                     $data = [
                         'pelanggan_id' => $pelangganId,
                         'id_brand' => $brandId,
                         'layanan' => $layanan,
                         'total_harga_layanan_x_pajak' => $totalHarga,
-                        'tgl_jatuh_tempo' => $tglJatuhTempo,
+                        'tgl_jatuh_tempo' => $tglJatuhTempo ? $tglJatuhTempo->format('Y-m-d') : null,
                         'metode_pembayaran' => isset($row['metode_pembayaran']) ? (string)$row['metode_pembayaran'] : 'otomatis',
                         'user_status' => $userStatus,
                         'profile_pppoe' => $dataTeknis->profile_pppoe,
                         'olt' => $dataTeknis->olt,
                         'id_pelanggan' => $dataTeknis->id_pelanggan,
+                        'tgl_invoice_terakhir' => $tglInvoiceTerakhir ? $tglInvoiceTerakhir->format('Y-m-d') : null,
                         'updated_at' => now(),
                     ];
-                    
+
                     Log::info('Processing langganan data', [
                         'pelanggan_id' => $pelangganId,
                         'brand' => $brandId,
                         'layanan' => $layanan,
-                        'total_harga' => $totalHarga
+                        'total_harga' => $totalHarga,
+                        'tgl_jatuh_tempo' => $data['tgl_jatuh_tempo'],
+                        'tgl_invoice_terakhir' => $data['tgl_invoice_terakhir']
                     ]);
-                    
-                    // Check if record already exists
+
                     $existingRecord = DB::table('langganan')->where('pelanggan_id', $pelangganId)->first();
-                    
+
                     if ($existingRecord) {
-                        // Update existing record
-                        DB::table('langganan')
-                            ->where('id', $existingRecord->id)
-                            ->update($data);
-                            
+                        DB::table('langganan')->where('id', $existingRecord->id)->update($data);
                         $this->importedIds[] = $existingRecord->id;
-                        
                         Log::info('Updated langganan for pelanggan ID ' . $pelangganId);
                     } else {
-                        // Insert new record
                         $data['created_at'] = now();
-                        
-                        // Use ID from Excel if available
                         if (isset($row['id']) && is_numeric($row['id'])) {
                             $data['id'] = (int)$row['id'];
                         }
-                        
                         $id = DB::table('langganan')->insertGetId($data);
-                        
                         $this->importedIds[] = $id;
-                        
                         Log::info('Inserted new langganan for pelanggan ID ' . $pelangganId);
                     }
-                    
+
                     $successCount++;
-                    
                 } catch (\Exception $e) {
-                    // Log error but continue with next row
                     Log::error('Error processing langganan row ' . ($index + 2), [
                         'error' => $e->getMessage(),
                         'trace' => $e->getTraceAsString(),
                     ]);
-                    
                     $failedCount++;
                 }
             }
         } finally {
-            // Re-enable foreign key checks
             DB::statement('SET FOREIGN_KEY_CHECKS=1;');
         }
-        
+
         Log::info('Langganan import completed', [
             'total' => $rows->count(),
             'success' => $successCount,
@@ -256,65 +227,22 @@ class LanggananImport implements ToCollection, WithHeadingRow
             'imported_ids' => $this->importedIds
         ]);
     }
-    
-    /**
-     * Normalize user status to ensure consistent values
-     * 
-     * @param string $status
-     * @return string
-     */
+
     protected function normalizeUserStatus($status)
     {
         if (!is_string($status)) {
             return 'Aktif';
         }
-        
         $status = trim(strtolower($status));
-        
         if ($status === 'aktif' || $status === 'active') {
             return 'Aktif';
         }
-        
         if ($status === 'suspend' || $status === 'suspended' || $status === 'nonaktif') {
             return 'Suspend';
         }
-        
-        // Default to Aktif if status unrecognized
         return 'Aktif';
     }
-
-    /**
-     * Transform a date value into a Carbon object.
-     *
-     * @return \Carbon\Carbon|null
-     */
-    public function transformDate($value)
-    {
-        if (empty($value)) {
-            return null; // Kembalikan NULL untuk tanggal kosong
-        }
-        
-        try {
-            // Coba parse dengan beberapa format umum
-            foreach(['m/d/Y', 'd/m/Y', 'm-d-Y', 'd-m-Y', 'Y-m-d'] as $format) {
-                try {
-                    return Carbon::createFromFormat($format, $value);
-                } catch (\Exception $e) {
-                    continue;
-                }
-            }
-            
-            // Coba parse secara umum
-            return Carbon::parse($value);
-        } catch (\Exception $e) {
-            Log::warning('Format tanggal tidak valid, mengembalikan null', ['value' => $value]);
-            return null; // Tetap kembalikan NULL jika format tanggal tidak valid
-        }
-    }
     
-    /**
-     * Mendapatkan ID yang berhasil diimpor
-     */
     public function getImportedIds()
     {
         return $this->importedIds;

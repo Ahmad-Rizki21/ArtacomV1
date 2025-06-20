@@ -88,7 +88,6 @@ class ServerMonitoringResource extends Resource
                     ->options([
                         'success' => 'Online',
                         'failed' => 'Offline',
-                        'pending' => 'Pending'
                     ])
                     ->attribute('last_connection_status')
                     ->default('success')

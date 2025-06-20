@@ -63,7 +63,10 @@ class Kernel extends ConsoleKernel
         // \App\Console\Commands\MonitorSubscriptionStatus::class  // Daftarkan perintah di sini
         // ->everyMinute()
 
-        
+        // Tambahkan jadwal untuk mikrotik:create-secret
+        $schedule->command('mikrotik:create-secret')
+            ->everyFiveMinutes() // Atau sesuaikan dengan kebutuhan, misalnya ->daily()
+            ->appendOutputTo(storage_path('logs/mikrotik-create-secret.log'));
 
                  
         // Uncomment ini untuk production nanti

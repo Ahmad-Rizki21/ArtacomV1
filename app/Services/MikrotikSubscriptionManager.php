@@ -11,22 +11,83 @@ use Carbon\Carbon;
 class MikrotikSubscriptionManager
 {
     protected $mikrotikService;
+    protected $pppoeSecretService;
 
     public function __construct(MikrotikConnectionService $mikrotikService)
     {
         $this->mikrotikService = $mikrotikService;
+        $this->pppoeSecretService = new MikrotikPppoeSecretService($mikrotikService);
+        
+        Log::debug('MikrotikSubscriptionManager initialized');
+    }
+
+    /**
+     * Membuat PPPoE Secret di Mikrotik berdasarkan data teknis
+     *
+     * @param \App\Models\DataTeknis $dataTeknis
+     * @return bool
+     */
+    public function createPppoeSecretOnMikrotik($dataTeknis)
+    {
+        Log::debug('Memulai createPppoeSecretOnMikrotik untuk data teknis ID: ' . ($dataTeknis->id ?? 'unknown'), [
+            'data_teknis' => $dataTeknis ? $dataTeknis->toArray() : null
+        ]);
+
+        if (!$dataTeknis || empty($dataTeknis->id_pelanggan)) {
+            Log::error('Data teknis tidak lengkap untuk membuat PPPoE secret', [
+                'data_teknis' => $dataTeknis ? $dataTeknis->toArray() : null
+            ]);
+            return false;
+        }
+
+        $data = [
+            'name' => $dataTeknis->id_pelanggan,
+            'password' => $dataTeknis->password_pppoe,
+            'profile' => $dataTeknis->profile_pppoe,
+            'remote-address' => $dataTeknis->ip_pelanggan,
+            'service' => 'pppoe',
+            'comment' => 'Auto-created by system on ' . Carbon::now()->toDateTimeString()
+        ];
+
+        Log::info('Mempersiapkan pembuatan PPPoE secret di Mikrotik', [
+            'data' => $data
+        ]);
+
+        try {
+            $result = $this->pppoeSecretService->createSecret($data);
+
+            if ($result) {
+                Log::info('PPPoE secret berhasil dibuat di Mikrotik', [
+                    'id_pelanggan' => $dataTeknis->id_pelanggan,
+                    'profile' => $dataTeknis->profile_pppoe
+                ]);
+            } else {
+                Log::error('Gagal membuat PPPoE secret di Mikrotik', [
+                    'id_pelanggan' => $dataTeknis->id_pelanggan,
+                    'data' => $data
+                ]);
+            }
+
+            return $result;
+        } catch (\Exception $e) {
+            Log::error('Exception saat membuat PPPoE secret: ' . $e->getMessage(), [
+                'id_pelanggan' => $dataTeknis->id_pelanggan,
+                'data' => $data,
+                'trace' => $e->getTraceAsString()
+            ]);
+            return false;
+        }
     }
 
     /**
      * Handle subscription status updates based on payment status
-     * 
+     *
      * @param Langganan $langganan
      * @param string $action (suspend|activate|auto)
      * @return bool
      */
     public function handleSubscriptionStatus(Langganan $langganan, string $action = 'auto')
     {
-        // Ambil informasi dari data teknis pelanggan
         $dataTeknis = optional($langganan->pelanggan)->dataTeknis;
         
         if (!$dataTeknis || !$dataTeknis->id_pelanggan) {
@@ -37,7 +98,6 @@ class MikrotikSubscriptionManager
             return false;
         }
 
-        // Tentukan aksi berdasarkan status jika auto
         if ($action === 'auto') {
             $action = ($langganan->user_status === 'Aktif') ? 'activate' : 'suspend';
         }
@@ -52,10 +112,7 @@ class MikrotikSubscriptionManager
 
         try {
             if ($action === 'suspend') {
-                // Ubah ke profile suspended dan nonaktifkan secret
                 $result = $this->mikrotikService->disablePppoeSecret($dataTeknis->id_pelanggan);
-                
-                // Pastikan juga profile diubah ke SUSPENDED
                 $profileResult = $this->mikrotikService->updatePppoeProfile(
                     $dataTeknis->id_pelanggan, 
                     'SUSPENDED'
@@ -66,9 +123,8 @@ class MikrotikSubscriptionManager
                     'result' => $result && $profileResult
                 ]);
 
-                return $result;
+                return $result && $profileResult;
             } else {
-                // Tentukan profile yang akan digunakan
                 $originalProfile = $this->determineActiveProfile($dataTeknis, $langganan);
                 
                 Log::info('Mengaktifkan dengan profile', [
@@ -78,13 +134,10 @@ class MikrotikSubscriptionManager
                     'layanan' => $langganan->layanan
                 ]);
 
-                // Aktifkan secret dengan mengembalikan ke profile asli
                 $result = $this->mikrotikService->enablePppoeSecret(
                     $dataTeknis->id_pelanggan, 
                     $originalProfile
                 );
-                
-                // Pastikan profile juga diupdate (safety check)
                 $profileResult = $this->mikrotikService->updatePppoeProfile(
                     $dataTeknis->id_pelanggan, 
                     $originalProfile
@@ -96,7 +149,7 @@ class MikrotikSubscriptionManager
                     'result' => $result && $profileResult
                 ]);
 
-                return $result;
+                return $result && $profileResult;
             }
         } catch (\Exception $e) {
             Log::error('Gagal update status Mikrotik', [
@@ -114,18 +167,14 @@ class MikrotikSubscriptionManager
      */
     protected function determineActiveProfile($dataTeknis, $langganan)
     {
-        // Ambil profile dari data teknis jika tersedia dan bukan SUSPENDED
         $profile = $dataTeknis->profile_pppoe;
         
-        // Jika profile kosong atau SUSPENDED, tentukan berdasarkan layanan
         if (empty($profile) || strtoupper($profile) === 'SUSPENDED') {
-            // Tentukan dari layanan
             $matches = [];
             if (preg_match('/(\d+)\s*Mbps/i', $langganan->layanan, $matches)) {
                 $speed = $matches[1];
-                $profile = "{$speed}Mbps-a"; // Default suffix a
+                $profile = "{$speed}Mbps-a";
             } else {
-                // Fallback ke harga jika layanan tidak jelas
                 $harga = $langganan->total_harga_layanan_x_pajak;
                 
                 if ($harga <= 150000) {
@@ -174,7 +223,6 @@ class MikrotikSubscriptionManager
             'status' => $langganan->user_status
         ]);
         
-        // Paksa update status berdasarkan database
         return $langganan->user_status === 'Aktif' 
             ? $this->handleSubscriptionStatus($langganan, 'activate')
             : $this->handleSubscriptionStatus($langganan, 'suspend');
@@ -182,7 +230,7 @@ class MikrotikSubscriptionManager
     
     /**
      * Proses langganan yang jatuh tempo hari ini
-     * 
+     *
      * @return array Statistik hasil proses
      */
     public function processDueDateSubscriptions()
@@ -199,7 +247,6 @@ class MikrotikSubscriptionManager
             'date' => $today
         ]);
         
-        // Ambil langganan yang jatuh tempo tepat hari ini dan masih aktif
         $dueSubscriptions = Langganan::where('tgl_jatuh_tempo', $today)
             ->where('user_status', 'Aktif')
             ->get();
@@ -212,7 +259,6 @@ class MikrotikSubscriptionManager
         ]);
             
         foreach ($dueSubscriptions as $langganan) {
-            // Cek apakah ada invoice yang belum dibayar untuk bulan ini
             $hasUnpaidInvoice = Invoice::where('pelanggan_id', $langganan->pelanggan_id)
                 ->whereMonth('tgl_invoice', Carbon::now()->month)
                 ->whereYear('tgl_invoice', Carbon::now()->year)
@@ -228,7 +274,6 @@ class MikrotikSubscriptionManager
             }
             
             try {
-                // Update status di database
                 $langganan->user_status = 'Suspend';
                 $langganan->save();
                 
@@ -237,7 +282,6 @@ class MikrotikSubscriptionManager
                     'tgl_jatuh_tempo' => $langganan->tgl_jatuh_tempo
                 ]);
                 
-                // Update di Mikrotik
                 if ($this->handleSubscriptionStatus($langganan, 'suspend')) {
                     $stats['suspended']++;
                 } else {
