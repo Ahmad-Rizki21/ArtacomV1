@@ -24,6 +24,7 @@ use Filament\Tables\Actions\ActionGroup;
 use Filament\Forms\Components\Placeholder;
 use Filament\Forms\Components\Tabs;
 use Filament\Forms\Components\Fieldset;
+use Filament\Tables\Columns\ImageColumn;
 use Illuminate\Support\HtmlString;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -429,15 +430,15 @@ class DataTeknisResource extends Resource
                     ->label('ODP')
                     ->toggleable(isToggledHiddenByDefault: true),
 
-                TextColumn::make('speedtest_proof')
+                ImageColumn::make('speedtest_proof')
                     ->label('Bukti Speedtest')
-                    ->formatStateUsing(function ($state) {
-                        if ($state) {
-                            return new HtmlString('<a href="' . asset('storage/' . $state) . '" target="_blank" class="text-blue-500 underline">Download</a>');
-                        }
-                        return 'Tidak ada';
-                    })
-                    ->toggleable(),
+                    ->disk('public')
+                    ->toggleable()
+                    ->height(80)
+                    ->width(120)
+                    ->placeholder('Tidak ada gambar')
+                    ->openUrlInNewTab(),
+
             ])
             ->defaultSort('id', 'asc')
             ->filters([
