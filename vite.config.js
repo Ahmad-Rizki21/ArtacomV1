@@ -8,6 +8,7 @@ export default defineConfig({
             input: [
                 'resources/css/app.css',
                 'resources/js/app.js',
+                'resources/js/notifications-invoice.js',
                 // Pastikan path ke file tema benar
                 'vendor/nuxtifyts/dash-stack-theme/resources/css/theme.css',
             ],

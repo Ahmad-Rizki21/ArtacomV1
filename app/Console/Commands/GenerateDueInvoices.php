@@ -48,68 +48,51 @@ class GenerateDueInvoices extends Command
         $failCount = 0;
         
         foreach ($langgananJatuhTempo as $langganan) {
-            try {
-                // Cek apakah sudah ada invoice untuk bulan ini
-                $existingInvoice = Invoice::where('pelanggan_id', $langganan->pelanggan_id)
-                    ->whereMonth('tgl_invoice', Carbon::now()->month)
-                    ->whereYear('tgl_invoice', Carbon::now()->year)
-                    ->exists();
-                
-                if ($existingInvoice && !$this->option('force')) {
-                    $this->info("Invoice untuk pelanggan ID: {$langganan->pelanggan_id} bulan ini sudah ada. Dilewati.");
-                    continue;
-                }
-                
-                // Menggunakan transaction untuk menghindari race condition
-                DB::transaction(function() use ($langganan, &$successCount, $targetDate) {
-                    // Generate invoice number
-                    // $invoiceNumber = 'INV-' . date('Ymd') . '-' . strtoupper(Str::random(5));
-                    $invoiceNumber = 'INV-' . now()->format('Ymd') . '-' . rand(1000, 9999);
-                    
-                    // Ambil informasi pelanggan
-                    $pelanggan = Pelanggan::find($langganan->pelanggan_id);
-                    
-                    if (!$pelanggan) {
-                        throw new \Exception("Pelanggan dengan ID {$langganan->pelanggan_id} tidak ditemukan");
-                    }
-                    
-                    // Buat invoice
-                    $invoice = new Invoice();
-                    $invoice->pelanggan_id = $langganan->pelanggan_id;
-                    $invoice->invoice_number = $invoiceNumber;
-                    $invoice->tgl_invoice = Carbon::now();
-                    $invoice->tgl_jatuh_tempo = $langganan->tgl_jatuh_tempo; // Gunakan tanggal jatuh tempo asli
-                    $invoice->total_harga = $langganan->total_harga_layanan_pajak;
-                    $invoice->email = $pelanggan->email;
-                    $invoice->no_telp = $pelanggan->no_telp;
-                    $invoice->brand = $langganan->id_brand;
-                    $invoice->status_invoice = 'Menunggu Pembayaran';
-                    $invoice->id_pelanggan = $pelanggan->id_pelanggan;
-                    $invoice->save();
-                    
-                    // Log untuk debugging
-                    Log::info('Creating Invoice (before due): ', $invoice->toArray());
-                    
-                    // Log invoice setelah dibuat
-                    Log::info('Invoice Created: ', $invoice->toArray());
-                    
-                    // Dispatch event untuk memproses dengan Xendit
-                    event(new InvoiceCreated($invoice));
-                    
-                    $this->info("✓ Berhasil membuat invoice {$invoiceNumber} untuk pelanggan ID: {$langganan->pelanggan_id} (jatuh tempo: {$langganan->tgl_jatuh_tempo})");
-                    $successCount++;
-                });
-                
-            } catch (\Exception $e) {
-                $this->error("✗ Error: {$e->getMessage()}");
-                Log::error('Error generate invoice', [
-                    'langganan_id' => $langganan->id,
-                    'error' => $e->getMessage(),
-                    'trace' => $e->getTraceAsString()
-                ]);
-                $failCount++;
+    try {
+        DB::transaction(function () use ($langganan, &$successCount) {
+            $existingInvoice = Invoice::where('pelanggan_id', $langganan->pelanggan_id)
+                ->whereDate('tgl_jatuh_tempo', $langganan->tgl_jatuh_tempo)
+                ->lockForUpdate()
+                ->exists();
+
+            if ($existingInvoice) {
+                $this->info("Invoice sudah ada untuk pelanggan {$langganan->pelanggan_id} dan tanggal jatuh tempo {$langganan->tgl_jatuh_tempo}, dilewati.");
+                return;
             }
-        }
+
+            // Buat invoice baru...
+            $invoiceNumber = 'INV-' . now()->format('Ymd') . '-' . rand(1000, 9999);
+
+            $pelanggan = Pelanggan::find($langganan->pelanggan_id);
+
+            if (!$pelanggan) {
+                throw new \Exception("Pelanggan tidak ditemukan");
+            }
+
+            $invoice = new Invoice();
+            $invoice->pelanggan_id = $langganan->pelanggan_id;
+            $invoice->invoice_number = $invoiceNumber;
+            $invoice->tgl_invoice = now();
+            $invoice->tgl_jatuh_tempo = $langganan->tgl_jatuh_tempo;
+            $invoice->total_harga = $langganan->total_harga_layanan_pajak;
+            $invoice->email = $pelanggan->email;
+            $invoice->no_telp = $pelanggan->no_telp;
+            $invoice->brand = $langganan->id_brand;
+            $invoice->status_invoice = 'Menunggu Pembayaran';
+            $invoice->id_pelanggan = $pelanggan->id_pelanggan;
+            $invoice->save();
+
+            event(new InvoiceCreated($invoice));
+
+            $this->info("Invoice berhasil dibuat: {$invoiceNumber}");
+            $successCount++;
+        });
+    } catch (\Exception $e) {
+        $this->error("Error: " . $e->getMessage());
+        Log::error('Generate invoice error', ['error' => $e->getMessage()]);
+    }
+}
+
         
         $this->info("Proses selesai: {$successCount} berhasil, {$failCount} gagal.");
         return 0;

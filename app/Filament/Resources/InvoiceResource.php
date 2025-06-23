@@ -33,6 +33,7 @@ use Filament\Tables\Columns\Column;
 use Filament\Tables\Actions\Action;
 use Filament\Tables\Filters\SelectFilter;
 use Illuminate\Support\Facades\Log;
+use App\Services\XenditService;
 use Carbon\Carbon;
 use Filament\Notifications\Notification;
 
@@ -215,7 +216,10 @@ class InvoiceResource extends Resource
                             ->columnSpan(2),
                     ])
                     ->hidden(fn ($livewire) => $livewire instanceof CreateInvoice),
-            ]);
+
+            ]); 
+
+                    
     }
 
     // Method untuk mengupdate data invoice berdasarkan pelanggan
@@ -344,6 +348,34 @@ class InvoiceResource extends Resource
                         'Selesai' => 'heroicon-o-check-badge',
                         default => null,
                     }),
+
+                TextColumn::make('link_status')
+                    ->label('Link Invoice')
+                    ->getStateUsing(function ($record) {
+                        // Pastikan ada payment_link
+                        if (empty($record->payment_link)) {
+                            return 'Tidak ada link';
+                        }
+
+                        // Inisialisasi XenditService (bisa inject via container)
+                        $xenditService = app(XenditService::class);
+
+                        // Cek apakah link bisa diakses
+                        $isAccessible = $xenditService->isInvoiceLinkAccessible($record->payment_link);
+
+                        if ($isAccessible) {
+                            return 'Link Aktif';
+                        } else {
+                            return 'Link Expired';
+                        }
+                    })
+                    ->color(fn ($state) => $state === 'Link Aktif' ? 'success' : 'danger')
+                    ->icons([
+                        'heroicon-o-check-circle' => fn ($state) => $state === 'Link Aktif',
+                        'heroicon-o-x-circle' => fn ($state) => $state === 'Link Expired',
+                    ])
+                    ->sortable(false)
+                    ->searchable(false),
 
                     // TextColumn::make('paid_at')
                     // ->label('Tanggal Pembayaran')

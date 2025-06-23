@@ -860,4 +860,24 @@ private function getNormalPriceBySpeed(string $speed, string $brand): float
             return null;
         }
     }
+
+    /**
+     * Mengambil daftar invoice yang belum dibayar dari Xendit
+     *
+     * @param string $brand
+     * @return array
+     */
+    public function isInvoiceLinkAccessible(string $paymentLink): bool
+    {
+        try {
+            $response = Http::timeout(5)->head($paymentLink);
+            return $response->status() === 200;
+        } catch (\Exception $e) {
+            Log::warning('Gagal akses link invoice', [
+                'payment_link' => $paymentLink,
+                'error' => $e->getMessage()
+            ]);
+            return false;
+        }
+    }
 }

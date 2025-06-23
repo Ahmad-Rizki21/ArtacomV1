@@ -7,6 +7,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use App\Services\XenditService;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\Cache;
 
 class PaymentController extends Controller
 {
@@ -69,6 +70,29 @@ class PaymentController extends Controller
             ]);
             return response()->json(['message' => 'Invoice tidak ditemukan'], 404);
         }
+    }
+
+
+    public function checkInvoiceNotifications()
+    {
+        // Ambil semua notifikasi dari cache
+        $notifications = Cache::getKeys()
+            ->filter(fn($key) => str_starts_with($key, 'invoice_notification_'))
+            ->map(fn($key) => Cache::get($key))
+            ->values()
+            ->toArray();
+
+        // Kosongkan cache setelah diambil untuk mencegah duplikasi
+        foreach (Cache::getKeys() as $key) {
+            if (str_starts_with($key, 'invoice_notification_')) {
+                Cache::forget($key);
+            }
+        }
+
+        return response()->json([
+            'status' => 'success',
+            'notifications' => $notifications,
+        ]);
     }
 
     // Handle Xendit Webhook

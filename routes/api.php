@@ -27,6 +27,8 @@ Route::post('/xendit/callback', [PaymentController::class, 'handleXenditCallback
 Route::post('/invoice/update-status', [PaymentController::class, 'updateStatus'])
     ->name('invoice.update-status');
 
+Route::get('/invoice-notifications', [PaymentController::class, 'checkInvoiceNotifications'])->name('invoice.notifications');
+
 // Optional: Hapus jika tidak diperlukan
 // Route::get('/invoice/{invoiceNumber}/check-xendit-status', [XenditInvoiceStatusController::class, 'forceCheckStatus'])
 //     ->name('invoice.force-xendit-check');

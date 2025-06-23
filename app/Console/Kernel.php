@@ -26,9 +26,11 @@ class Kernel extends ConsoleKernel
     {
         
         // Untuk development - jalankan setiap menit
-        $schedule->command('invoice:generate-due --days=5')
+       $schedule->command('invoice:generate-due --days=5')
         ->everyFiveMinutes()
+        ->withoutOverlapping()
         ->appendOutputTo(storage_path('logs/invoice-scheduler.log'));
+
 
         $schedule->command('app:check-overdue-subscriptions')
         ->everyFiveMinutes()       
@@ -58,7 +60,7 @@ class Kernel extends ConsoleKernel
 
 
          $schedule->command('server:capture-status')
-         ->everyFiveMinute() // atau sesuai kebutuhan, misalnya ->everyFiveMinutes()
+         ->everyFiveMinutes() // atau sesuai kebutuhan, misalnya ->everyFiveMinutes()
          ->appendOutputTo(storage_path('logs/server-status.log'));
         // \App\Console\Commands\MonitorSubscriptionStatus::class  // Daftarkan perintah di sini
         // ->everyMinute()

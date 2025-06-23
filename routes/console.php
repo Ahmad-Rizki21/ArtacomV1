@@ -35,13 +35,14 @@ Artisan::command('inspire', function () {
 //     ]);
 // })->purpose('Force generate invoices for all active customers');
 
+
 // Command untuk menjalankan invoice
 // Schedule::call(new GeneratorDueInvoices)->everyMinute();
-Schedule::command('invoice:generate-due')->everyFiveMinutes(); //tiap jam 10 pagi
-Schedule::command('app:check-overdue-subscriptions')->everyFiveMinutes(); // tiap 30 Menit
-Schedule::command('app:sync-mikrotik')->everyFiveMinutes();
-Schedule::command('invoice:check-paid-status')->everyFiveMinutes(); // tiap 1 Menit
-Schedule::command('monitor:mikrotik')->everyFiveMinutes(); // tiap 1 Menit
+// Schedule::command('invoice:generate-due')->everyFiveMinutes(); //tiap jam 10 pagi
+// Schedule::command('app:check-overdue-subscriptions')->everyFiveMinutes(); // tiap 30 Menit
+// Schedule::command('app:sync-mikrotik')->everyFiveMinutes();
+// Schedule::command('invoice:check-paid-status')->everyFiveMinutes(); // tiap 1 Menit
+// Schedule::command('monitor:mikrotik')->everyFiveMinutes(); // tiap 1 Menit
 
 
 // Schedule::call(function () {
