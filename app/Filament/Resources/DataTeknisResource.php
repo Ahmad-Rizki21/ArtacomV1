@@ -435,7 +435,7 @@ class DataTeknisResource extends Resource
                     ->disk('public')
                     ->toggleable()
                     ->height(80)
-                    ->width(120)
+                    ->width(null)
                     ->placeholder('Tidak ada gambar')
                     ->openUrlInNewTab(),
 
