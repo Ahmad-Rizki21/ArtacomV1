@@ -761,6 +761,7 @@ private function getNormalPriceBySpeed(string $speed, string $brand): float
             // Update invoice dengan data dari Xendit
             $invoice->payment_link = $responseData['invoice_url'];
             $invoice->xendit_id = $responseData['id'];
+            $invoice->expiry_date = Carbon::parse($responseData['expiry_date']); // <--- TAMBAHKAN INI
             $invoice->xendit_external_id = $responseData['external_id'];
             $invoice->save();
 

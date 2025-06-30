@@ -162,10 +162,13 @@ class LanggananImport implements ToCollection, WithHeadingRow
                             default:
                                 $hargaValue = $hargaLayanan->harga_10mbps ?? 0;
                         }
-                        $pajakValue = (($hargaLayanan->pajak ?? 0) / 100) * $hargaValue;
+                        $pajakValue = ($hargaValue * ($hargaLayanan->pajak ?? 0)) / 100;
                     }
 
-                    $totalHarga = ceil(($hargaValue + $pajakValue) / 1000) * 1000;
+                    $totalHarga = $hargaValue + $pajakValue;  // Tanpa pembulatan ke atas
+
+
+
 
                     $data = [
                         'pelanggan_id' => $pelangganId,

@@ -36,6 +36,7 @@ use Illuminate\Support\Facades\Log;
 use App\Services\XenditService;
 use Carbon\Carbon;
 use Filament\Notifications\Notification;
+use Illuminate\Database\Eloquent\Builder;
 
 class InvoiceResource extends Resource
 {
@@ -47,6 +48,12 @@ class InvoiceResource extends Resource
 
     protected static ?string $slug = 'invoices';
     protected static ?string $modelLabel = 'Invoice';
+
+    public static function getEloquentQuery(): Builder
+    {
+        return parent::getEloquentQuery()
+            ->with(['pelanggan', 'hargaLayanan']); 
+    }
 
     public static function form(Form $form): Form
     {
@@ -103,9 +110,10 @@ class InvoiceResource extends Resource
                     ->schema([
                         Select::make('pelanggan_id')
                             ->label('Nama Pelanggan')
-                            ->options(Pelanggan::pluck('nama', 'id'))
+                            ->relationship('pelanggan', 'nama') // Gunakan relationship
                             ->searchable()
-                            ->preload()
+                            ->preload(false) // Matikan preload untuk data besar
+                            ->required()
                             ->live()
                             ->required()
                             ->afterStateUpdated(function ($state, callable $set) {
@@ -289,37 +297,47 @@ class InvoiceResource extends Resource
     {
         return $table
             ->columns([
-                TextColumn::make('invoice_number')
+                Tables\Columns\TextColumn::make('invoice_number')
                     ->label('Nomor Invoice')
                     ->searchable()
                     ->sortable()
                     ->copyable()
                     ->weight('bold'),
 
-                TextColumn::make('pelanggan.nama')
+
+                Tables\Columns\TextColumn::make('pelanggan.nama')
                     ->label('Pelanggan')
                     ->searchable()
                     ->sortable(),
 
-                TextColumn::make('brand')
+                // TextColumn::make('brand')
+                //     ->label('Brand')
+                //     ->getStateUsing(fn ($record) => 
+                //         HargaLayanan::where('id_brand', $record->brand)->value('brand') ?? $record->brand
+                //     )
+                //     ->searchable()
+                //     ->sortable(),
+                Tables\Columns\TextColumn::make('hargaLayanan.brand')
                     ->label('Brand')
-                    ->getStateUsing(fn ($record) => 
-                        HargaLayanan::where('id_brand', $record->brand)->value('brand') ?? $record->brand
-                    )
-                    ->searchable()
+                    ->searchable(query: function (Builder $query, string $search): Builder {
+                        return $query->whereHas('hargaLayanan', function($q) use ($search) {
+                            $q->where('brand', 'like', "%{$search}%");
+                        });
+                    })
                     ->sortable(),
 
-                TextColumn::make('total_harga')
+                Tables\Columns\TextColumn::make('total_harga')
                     ->label('Total Harga')
                     ->money('IDR')
                     ->sortable(),
 
-                TextColumn::make('tgl_invoice')
+
+                Tables\Columns\TextColumn::make('tgl_invoice')
                     ->label('Tanggal Invoice')
                     ->date('d M Y')
                     ->sortable(),
 
-                TextColumn::make('tgl_jatuh_tempo')
+                Tables\Columns\TextColumn::make('tgl_jatuh_tempo')
                     ->label('Periode Pembayaran')
                     ->date('M Y')
                     ->sortable()
@@ -331,7 +349,7 @@ class InvoiceResource extends Resource
                             : null
                     ),
 
-                TextColumn::make('status_invoice')
+                Tables\Columns\TextColumn::make('status_invoice')
                     ->label('Status Pembayaran')
                     ->badge()
                     ->color(fn ($state) => match ($state) {
@@ -349,54 +367,31 @@ class InvoiceResource extends Resource
                         default => null,
                     }),
 
-                TextColumn::make('link_status')
-                    ->label('Link Invoice')
-                    ->getStateUsing(function ($record) {
-                        // Pastikan ada payment_link
-                        if (empty($record->payment_link)) {
-                            return 'Tidak ada link';
-                        }
-
-                        // Inisialisasi XenditService (bisa inject via container)
-                        $xenditService = app(XenditService::class);
-
-                        // Cek apakah link bisa diakses
-                        $isAccessible = $xenditService->isInvoiceLinkAccessible($record->payment_link);
-
-                        if ($isAccessible) {
-                            return 'Link Aktif';
-                        } else {
-                            return 'Link Expired';
-                        }
-                    })
-                    ->color(fn ($state) => $state === 'Link Aktif' ? 'success' : 'danger')
-                    ->icons([
-                        'heroicon-o-check-circle' => fn ($state) => $state === 'Link Aktif',
-                        'heroicon-o-x-circle' => fn ($state) => $state === 'Link Expired',
-                    ])
-                    ->sortable(false)
-                    ->searchable(false),
-
-                    // TextColumn::make('paid_at')
-                    // ->label('Tanggal Pembayaran')
-                    // ->formatStateUsing(function ($record) {
-                    //     if (!$record->paid_at) return '-';
+                // Tables\Columns\TextColumn::make('link_status')
+                //     ->label('Link Invoice')
+                //     ->getStateUsing(function (Invoice $record) {
+                //         // Pastikan kolom 'expiry_date' ada di tabel 'invoices' Anda
+                //         if (empty($record->payment_link) || empty($record->expiry_date)) {
+                //             return 'Link Aktif';
+                //         }
                         
-                    //     // Konversi UTC ke WIB (UTC+7)
-                    //     $localTime = \Carbon\Carbon::parse($record->paid_at)
-                    //         ->addHours(7)
-                    //         ->format('d M Y : H:i:s');
-                        
-                    //     return $localTime;
-                    // })
-                    // ->sortable()
-                    // ->toggleable()
-                    // ->description(fn ($record) => 
-                    //     $record->paid_at ? 'Pembayaran diterima' : '-'
-                    // )
-                    // ->color(fn ($record) => 
-                    //     $record->paid_at ? 'success' : 'danger'
-                    // ),
+                //         // Membandingkan tanggal secara lokal, sangat cepat
+                //         return Carbon::parse($record->expiry_date)->isFuture() 
+                //                ? 'Link Aktif' 
+                //                : 'Link Expired';
+                //     })
+                //     ->color(fn (string $state): string => match ($state) {
+                //         'Link Aktif' => 'success',
+                //         'Link Expired' => 'danger',
+                //         default => 'gray',
+                //     })
+                //     ->icon(fn (string $state): string => match ($state) {
+                //         'Link Aktif' => 'heroicon-o-check-circle',
+                //         'Link Expired' => 'heroicon-o-x-circle',
+                //         default => 'heroicon-o-question-mark-circle',
+                //     })
+                //     ->sortable(false)
+                //     ->searchable(false),
 
                     TextColumn::make('paid_at')
                     ->label('Tanggal Pembayaran')

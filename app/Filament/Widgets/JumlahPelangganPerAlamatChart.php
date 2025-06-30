@@ -33,6 +33,7 @@ class JumlahPelangganPerAlamatChart extends ApexChartWidget
         $alamatOptions = [
             'Rusun Nagrak',
             'Rusun Pinus Elok',
+            'Luar Pinus Elok',
             'Rusun Pulogebang',
             'Rusun KM2',
             'Rusun Tipar Cakung',

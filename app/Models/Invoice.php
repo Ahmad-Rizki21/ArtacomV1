@@ -32,7 +32,9 @@ class Invoice extends Model
         'xendit_external_id',
         'paid_amount',
         'paid_at',
-        'tgl_bayar'
+        'tgl_bayar',
+        'expiry_date', // <-- PASTIKAN KOLOM INI SUDAH DITAMBAHKAN VIA MIGRASI
+        
     ];
 
     // Pastikan created_at dan updated_at dikelola dengan benar
@@ -41,6 +43,7 @@ class Invoice extends Model
         'tgl_invoice', 
         'tgl_jatuh_tempo', 
         'paid_at',
+        'expiry_date' => 'datetime', // <-- CAST UNTUK KOLOM BARU
         'tgl_bayar', // Tambahkan field baru
         'created_at',
         'updated_at'
