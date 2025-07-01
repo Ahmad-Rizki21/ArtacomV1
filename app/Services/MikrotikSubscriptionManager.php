@@ -118,6 +118,14 @@ class MikrotikSubscriptionManager
                     'SUSPENDED'
                 );
 
+                // Langkah 2: Hapus koneksi aktif untuk memaksa logout (KODE BARU YANG DITAMBAHKAN)
+                $this->mikrotikService->removePppoeActiveConnection($dataTeknis->id_pelanggan);
+
+                Log::info('Proses suspend selesai, termasuk force logout', [
+                    'id_pelanggan' => $dataTeknis->id_pelanggan,
+                    'result' => $result && $profileResult
+                ]);
+
                 Log::info('Proses suspend selesai', [
                     'id_pelanggan' => $dataTeknis->id_pelanggan,
                     'result' => $result && $profileResult

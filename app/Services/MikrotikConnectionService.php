@@ -368,6 +368,64 @@ class MikrotikConnectionService
     }
 
     /**
+     * Hapus koneksi PPPoE yang sedang aktif.
+     * Fungsinya untuk memaksa logout pelanggan secara instan.
+     *
+     * @param string $username Nama user PPPoE yang koneksinya akan dihapus.
+     * @return bool True jika berhasil atau jika user tidak ditemukan (sudah tidak aktif).
+     */
+    public function removePppoeActiveConnection(string $username)
+    {
+        $client = $this->connect();
+        if (!$client) {
+            return false;
+        }
+
+        try {
+            // 1. Cari koneksi aktif berdasarkan nama user di /ppp/active
+            $query = new Query('/ppp/active/print');
+            $query->where('name', $username);
+            $activeConnections = $client->query($query)->read();
+
+            // 2. Jika tidak ada koneksi aktif, berarti pelanggan sudah offline. Anggap berhasil.
+            if (empty($activeConnections)) {
+                Log::info('No active PPPoE connection found for user. No action needed.', [
+                    'username' => $username
+                ]);
+                return true; // Berhasil, karena memang tidak ada yang perlu dihapus.
+            }
+
+            // 3. Jika koneksi ditemukan, ambil ID-nya dan kirim perintah hapus
+            $connectionId = $activeConnections[0]['.id'];
+            Log::info('Found active PPPoE connection. Removing...', [
+                'username' => $username,
+                'connection_id' => $connectionId
+            ]);
+
+            $removeQuery = new Query('/ppp/active/remove');
+            $removeQuery->equal('.id', $connectionId);
+            $client->query($removeQuery)->read();
+
+            Log::info('Successfully removed active PPPoE connection.', [
+                'username' => $username
+            ]);
+
+            return true;
+
+        } catch (\Exception $e) {
+            Log::error('Error removing active PPPoE connection: ' . $e->getMessage(), [
+                'username' => $username,
+                'trace' => $e->getTraceAsString()
+            ]);
+            return false;
+        }
+    }
+
+    
+
+    
+
+    /**
      * Aktifkan PPPoE Secret dengan mengubah profile sesuai parameter dan set disabled=no
      * 
      * @param string $secretName

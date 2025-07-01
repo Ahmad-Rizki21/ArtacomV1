@@ -60,13 +60,15 @@ class Kernel extends ConsoleKernel
         foreach ($fiveMinuteCommands as $command => $logFile) {
             $schedule->command($command)
                 ->everyFiveMinutes()
+                ->withoutOverlapping(10)
                 ->appendOutputTo(storage_path($logFile));
         }
         
         // Menjalankan fungsi pengecekan status langganan internal setiap 5 menit
         $schedule->call(function () {
             Langganan::checkAllSubscriptionStatus();
-        })->everyFiveMinutes()->appendOutputTo(storage_path('logs/langganan-status-check.log'));
+            
+        })->withoutOverlapping()->everyFiveMinutes()->appendOutputTo(storage_path('logs/langganan-status-check.log'));
 
         // Menjalankan queue worker setiap 5 menit untuk memproses job
         $schedule->command('queue:work --stop-when-empty --tries=3')
