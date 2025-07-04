@@ -3,105 +3,107 @@
 namespace App\Console\Commands;
 
 use Illuminate\Console\Command;
-use App\Models\Invoice;          // Pastikan path model Invoice Anda benar
-use App\Services\XenditService;  // Import service yang sudah Anda buat
+use App\Models\Invoice;
+use App\Models\Langganan; // <-- TAMBAHKAN INI
+use App\Services\XenditService;
+use App\Services\MikrotikSubscriptionManager; // <-- TAMBAHKAN INI
 use Illuminate\Support\Facades\Log;
 
 class CheckPaidInvoicesCommand extends Command
 {
-    /**
-     * The name and signature of the console command.
-     *
-     * @var string
-     */
     protected $signature = 'invoice:check-paid-status';
+    protected $description = 'Check paid invoices and activate subscriptions on Mikrotik.';
     
-    /**
-     * The console command description.
-     *
-     * @var string
-     */
-    protected $description = 'Check the status of unpaid invoices from Xendit and update them if necessary (fallback for webhooks).';
-    
-    /**
-     * Instance dari Xendit Service.
-     *
-     * @var \App\Services\XenditService
-     */
     protected $xenditService;
+    protected $mikrotikManager; // <-- TAMBAHKAN INI
 
-    /**
-     * Create a new command instance.
-     * Menggunakan Dependency Injection untuk mendapatkan XenditService.
-     *
-     * @param \App\Services\XenditService $xenditService
-     * @return void
-     */
-    public function __construct(XenditService $xenditService)
+    public function __construct(XenditService $xenditService, MikrotikSubscriptionManager $mikrotikManager) // <-- MODIFIKASI INI
     {
         parent::__construct();
         $this->xenditService = $xenditService;
+        $this->mikrotikManager = $mikrotikManager; // <-- TAMBAHKAN INI
     }
     
-    /**
-     * Execute the console command.
-     *
-     * @return int
-     */
     public function handle()
     {
         $this->info('Starting to check status of unpaid invoices...');
         
-        // 1. Ambil semua invoice yang statusnya 'Menunggu Pembayaran'.
-        // Saya menggunakan status ini berdasarkan konstanta STATUS_MAP di service Anda.
         $unpaidInvoices = Invoice::where('status_invoice', 'Menunggu Pembayaran')->get();
 
         if ($unpaidInvoices->isEmpty()) {
-            $this->info('No invoices with status "Menunggu Pembayaran" found to check.');
-            // Menulis ke log utama juga untuk jejak
-            Log::info('[Scheduler] No unpaid invoices to check.');
-            return self::SUCCESS; // Command selesai dengan sukses
+            $this->info('No unpaid invoices to check.');
+            return self::SUCCESS;
         }
 
         $this->info("Found {$unpaidInvoices->count()} unpaid invoice(s) to check.");
-        Log::info("[Scheduler] Found {$unpaidInvoices->count()} unpaid invoice(s) to check.");
 
         foreach ($unpaidInvoices as $invoice) {
-            // 2. Pastikan invoice memiliki 'xendit_id' dan 'brand' untuk bisa dicek
             if (empty($invoice->xendit_id) || empty($invoice->brand)) {
-                $logMessage = "Skipping Invoice #{$invoice->invoice_number}: missing xendit_id or brand.";
-                $this->warn($logMessage);
-                Log::warning("[Scheduler] " . $logMessage);
+                $this->warn("Skipping Invoice #{$invoice->invoice_number}: missing xendit_id or brand.");
                 continue;
             }
 
-            $this->line("-> Checking Invoice #{$invoice->invoice_number} (Xendit ID: {$invoice->xendit_id})");
-
-            // 3. Panggil metode checkInvoiceStatus dari service Anda.
-            // Metode ini sudah berisi logika untuk update database jika lunas.
+            $this->line("-> Checking Invoice #{$invoice->invoice_number}...");
             $result = $this->xenditService->checkInvoiceStatus($invoice->xendit_id, $invoice->brand);
 
-            if ($result && isset($result['status'])) {
-                // Logika pembaruan sudah ada di dalam checkInvoiceStatus,
-                // jadi di sini kita hanya perlu memberikan feedback di console/log.
-                if (in_array($result['status'], ['PAID', 'SETTLED'])) {
-                    // Refresh model untuk mendapatkan status terbaru
-                    $invoice->refresh(); 
-                    $successMessage = "SUCCESS: Status for Invoice #{$invoice->invoice_number} was updated to {$invoice->status_invoice} via scheduler.";
-                    $this->info($successMessage);
-                    Log::info("[Scheduler] " . $successMessage);
-                } else {
-                    $this->line("   Status is still {$result['status']}. No update needed.");
-                }
+            if ($result && isset($result['status']) && in_array($result['status'], ['PAID', 'SETTLED'])) {
+                // Status sudah diperbarui di dalam service, kita refresh untuk dapat data baru
+                $invoice->refresh(); 
+                $this->info("SUCCESS: Status for Invoice #{$invoice->invoice_number} is now {$invoice->status_invoice}.");
+                Log::info("[Scheduler] Invoice #{$invoice->invoice_number} updated to {$invoice->status_invoice}.");
+
+                // === LOGIKA BARU UNTUK AKTIVASI MIKROTIK ===
+                $this->activateSubscription($invoice);
+                // ===========================================
+
             } else {
-                $errorMessage = "FAILED: Could not retrieve status for Invoice #{$invoice->invoice_number}.";
-                $this->error($errorMessage);
-                Log::error("[Scheduler] " . $errorMessage);
+                $status = $result['status'] ?? 'UNKNOWN';
+                $this->line("   Status is still {$status}. No update needed.");
             }
         }
 
         $this->info('Checking unpaid invoices status completed.');
-        Log::info('[Scheduler] Checking unpaid invoices status completed.');
         return self::SUCCESS;
+    }
+
+    /**
+     * Mengaktifkan langganan setelah invoice dibayar.
+     *
+     * @param Invoice $invoice
+     */
+    protected function activateSubscription(Invoice $invoice)
+    {
+        $this->info("   Attempting to activate subscription for Pelanggan ID: {$invoice->pelanggan_id}");
+
+        // 1. Cari langganan yang relevan
+        $langganan = Langganan::where('pelanggan_id', $invoice->pelanggan_id)->first();
+
+        if (!$langganan) {
+            $this->error("   ERROR: Langganan not found for Pelanggan ID: {$invoice->pelanggan_id}.");
+            Log::error("[Scheduler] Activation failed: Langganan not found for Pelanggan ID {$invoice->pelanggan_id}.");
+            return;
+        }
+
+        // 2. Cek apakah statusnya memang perlu diaktifkan (misalnya dari 'Suspend')
+        if ($langganan->user_status === 'Aktif') {
+            $this->info("   INFO: Subscription is already active. No action needed.");
+            return;
+        }
+
+        // 3. Update status langganan di database
+        $langganan->user_status = 'Aktif';
+        $langganan->save();
+        $this->info("   DB Updated: Subscription status changed to 'Aktif'.");
+
+        // 4. Panggil MikrotikManager untuk mengaktifkan di router
+        $result = $this->mikrotikManager->handleSubscriptionStatus($langganan, 'activate');
+
+        if ($result) {
+            $this->info("   MIKROTIK SUCCESS: Subscription for Pelanggan ID {$langganan->pelanggan_id} has been activated on the router.");
+            Log::info("[Scheduler] Mikrotik activation successful for Pelanggan ID {$langganan->pelanggan_id}.");
+        } else {
+            $this->error("   MIKROTIK FAILED: Failed to activate subscription on the router for Pelanggan ID {$langganan->pelanggan_id}.");
+            Log::error("[Scheduler] Mikrotik activation failed for Pelanggan ID {$langganan->pelanggan_id}.");
+        }
     }
 }

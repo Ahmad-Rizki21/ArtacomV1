@@ -15,6 +15,7 @@ class DataTeknis extends Model
         'ip_pelanggan',
         'profile_pppoe',
         'olt',
+        'mikrotik_server_id',
         'olt_custom',
         'pon',
         'otb',
@@ -63,6 +64,10 @@ class DataTeknis extends Model
             'id' // Local key di Pelanggan
         );
     }
+    public function server()
+{
+    return $this->belongsTo(\App\Models\MikrotikServer::class, 'mikrotik_server_id');
+}
     
     // Helper method untuk cek status user
     public function isUserSuspended()

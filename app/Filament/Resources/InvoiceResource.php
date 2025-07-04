@@ -310,6 +310,16 @@ class InvoiceResource extends Resource
                     ->searchable()
                     ->sortable(),
 
+                // TAMBAHKAN KODE DI BAWAH INI
+                Tables\Columns\TextColumn::make('pelanggan.alamat')
+                    ->label('Alamat')
+                    ->searchable(query: function (Builder $query, string $search): Builder {
+                        return $query->whereHas('pelanggan', fn($q) => $q->where('alamat', 'like', "%{$search}%"));
+                    })
+                    ->sortable()
+                    ->wrap() // Mengaktifkan word wrap untuk alamat yang panjang
+                    ->toggleable(), // Membuat kolom bisa disembunyikan
+
                 // TextColumn::make('brand')
                 //     ->label('Brand')
                 //     ->getStateUsing(fn ($record) => 
@@ -501,24 +511,24 @@ class InvoiceResource extends Resource
                     ->url(fn (Invoice $record) => route('invoice.view', $record->id))
                     ->openUrlInNewTab(),
                     
-                Action::make('copy_payment_link')
-                    ->label('Salin Link')
-                    ->icon('heroicon-o-clipboard')
-                    ->action(fn ($record) => null) // Handled by JavaScript
-                    ->extraAttributes([
-                        'x-data' => '',
-                        'x-on:click' => "
-                            navigator.clipboard.writeText('{record.payment_link}');
-                            window.dispatchEvent(new CustomEvent('notification', {
-                                title: 'Link disalin!',
-                                body: 'Link pembayaran telah disalin ke clipboard.',
-                                icon: 'heroicon-o-clipboard',
-                                iconColor: 'success',
-                                timeout: 3000,
-                            })
-                        "
-                    ])
-                    ->visible(fn ($record) => !empty($record->payment_link)),
+                // Action::make('copy_payment_link')
+                //     ->label('Salin Link')
+                //     ->icon('heroicon-o-clipboard')
+                //     ->action(fn ($record) => null) // Handled by JavaScript
+                //     ->extraAttributes([
+                //         'x-data' => '',
+                //         'x-on:click' => "
+                //             navigator.clipboard.writeText('{record.payment_link}');
+                //             window.dispatchEvent(new CustomEvent('notification', {
+                //                 title: 'Link disalin!',
+                //                 body: 'Link pembayaran telah disalin ke clipboard.',
+                //                 icon: 'heroicon-o-clipboard',
+                //                 iconColor: 'success',
+                //                 timeout: 3000,
+                //             })
+                //         "
+                //     ])
+                //     ->visible(fn ($record) => !empty($record->payment_link)),
                     
                     Action::make('mark_as_paid')
                     ->label('Tandai Lunas')

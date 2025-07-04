@@ -246,7 +246,7 @@ class DataTeknisResource extends Resource
                                             ->label('Lokasi OLT')
                                             ->options([
                                                 'Nagrak' => 'Rusun Nagrak',
-                                                'Pinus Elok' => 'Rusun Pinus Elok',
+                                                'Pinus Elok' => 'Pinus Elok',
                                                 'Pulogebang Tower' => 'Rusun Pulogebang Tower',
                                                 'Tipar Cakung' => 'Rusun Tipar Cakung',
                                                 'Tambun' => 'Tambun',
@@ -446,10 +446,10 @@ class DataTeknisResource extends Resource
                     ->label('Filter OLT')
                     ->options([
                         'Nagrak' => 'Rusun Nagrak',
-                        'Pinus Elok' => 'Rusun Pinus Elok',
+                        'Pinus Elok' => 'Pinus Elok',
                         'Pulogebang Tower' => 'Rusun Pulogebang Tower',
                         'Tipar Cakung' => 'Rusun Tipar Cakung',
-                        'Tambun' => 'Rusun Tambun',
+                        'Tambun' => 'Tambun',
                         'Parama' => 'Perumahan Parama',
                         'Waringin' => 'Perumahan Waringin',
                         'Lainnya' => 'Lainnya',

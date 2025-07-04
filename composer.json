@@ -41,7 +41,6 @@
         "tomatophp/filament-settings-hub": "^2.0",
         "xendit/xendit-php": "^6.2",
         "z3d0x/filament-logger": "^0.8.0"
-
     },
     "require-dev": {
         "fakerphp/faker": "^1.23",

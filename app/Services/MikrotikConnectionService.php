@@ -10,177 +10,36 @@ use Illuminate\Support\Facades\Log;
 
 class MikrotikConnectionService
 {
-
     /**
-     * Collect and store metrics from a Mikrotik server
-     * 
-     * @param MikrotikServer|null $server
-     * @return bool
+     * Menyimpan koneksi client yang aktif selama script berjalan untuk digunakan kembali.
+     * @var array
      */
-    public function collectMetrics($server = null)
-{
-    $client = $this->connect($server);
-
-    if (!$client) {
-        return null;
-    }
-
-    try {
-        // Get system resources
-        $resources = $client->query('/system/resource/print')->read();
-        $resource = $resources[0] ?? [];
-        
-        // Get interface traffic
-        $interfaces = $client->query('/interface/print')->read();
-        
-        // Get active connections
-        $connections = $client->query('/ip/firewall/connection/print')->read();
-        
-        // Siapkan data untuk disimpan ke database
-        $cpuLoad = $resource['cpu-load'] ?? null;
-        
-        $memoryUsage = null;
-        if (isset($resource['free-memory']) && isset($resource['total-memory'])) {
-            $memoryUsage = round((1 - ($resource['free-memory'] / $resource['total-memory'])) * 100, 2) . '%';
-        }
-        
-        $diskUsage = null;
-        if (isset($resource['free-hdd-space']) && isset($resource['total-hdd-space'])) {
-            $diskUsage = round((1 - ($resource['free-hdd-space'] / $resource['total-hdd-space'])) * 100, 2) . '%';
-        }
-        
-        // Simpan data ke database
-        $metrics = ServerMetric::create([
-            'mikrotik_server_id' => $server->id,
-            'cpu_load' => $cpuLoad,
-            'memory_usage' => $memoryUsage,
-            'disk_usage' => $diskUsage,
-            'uptime' => $resource['uptime'] ?? null,
-            'interfaces_traffic' => json_encode($interfaces),
-            'active_connections' => json_encode(array_slice($connections, 0, 100)),
-            'system_resources' => json_encode($resource),
-            'additional_info' => json_encode([
-                'board_name' => $resource['board-name'] ?? null,
-                'version' => $resource['version'] ?? null
-            ]),
-        ]);
-        
-        // Update status koneksi server
-        $server->update([
-            'last_connection_status' => 'success',
-            'last_connected_at' => now(),
-            'ros_version' => $resource['version'] ?? null
-        ]);
-        
-        return [
-            'success' => true,
-            'metrics_id' => $metrics->id,
-            'resource' => $resource
-        ];
-    } catch (\Exception $e) {
-        Log::error('Error collecting metrics: ' . $e->getMessage(), [
-            'server' => $server->name ?? 'unknown',
-            'trace' => $e->getTraceAsString()
-        ]);
-        
-        // Update status server
-        if ($server) {
-            $server->update([
-                'last_connection_status' => 'failed',
-                'last_connected_at' => now()
-            ]);
-        }
-        
-        return null;
-    }
-}
-    
-    /**
-     * Get system resources
-     * 
-     * @param Client $client
-     * @return array
-     */
-    public function getSystemResources(Client $client)
-    {
-        $query = new Query('/system/resource/print');
-        return $client->query($query)->read();
-    }
-    
-    /**
-     * Get network interfaces
-     * 
-     * @param Client $client
-     * @return array
-     */
-    public function getInterfaces(Client $client)
-    {
-        $query = new Query('/interface/print');
-        return $client->query($query)->read();
-    }
-    
-    /**
-     * Get active connections
-     * 
-     * @param Client $client
-     * @return array
-     */
-    public function getActiveConnections(Client $client)
-    {
-        $query = new Query('/ip/firewall/connection/print');
-        return $client->query($query)->read();
-    }
-    
-    /**
-     * Get wireless clients
-     * 
-     * @param Client $client
-     * @return array
-     */
-    public function getWirelessClients(Client $client)
-    {
-        $query = new Query('/interface/wireless/registration-table/print');
-        return $client->query($query)->read();
-    }
-    
-    /**
-     * Get DHCP leases
-     * 
-     * @param Client $client
-     * @return array
-     */
-    public function getDhcpLeases(Client $client)
-    {
-        $query = new Query('/ip/dhcp-server/lease/print');
-        return $client->query($query)->read();
-    }
-
-
-
-
+    private $activeClients = [];
 
     /**
-     * Membuat koneksi ke Mikrotik
-     * 
+     * Membuat koneksi ke Mikrotik atau menggunakan kembali koneksi yang ada.
+     *
      * @param MikrotikServer|null $server
      * @return Client|null
      */
-    public function connect($server = null)
+    public function connect(MikrotikServer $server = null)
     {
         try {
             if (!$server) {
-                $server = MikrotikServer::first();
-
-                if (!$server) {
-                    Log::error('Mikrotik Connection Error: No server found in database');
-                    return null;
-                }
+                Log::error('Mikrotik Connection Error: Server target tidak ditentukan.');
+                return null;
             }
 
-            // Pastikan port bertipe integer
+            // Cek apakah koneksi untuk server ini sudah ada. Jika ya, gunakan kembali.
+            if (isset($this->activeClients[$server->id])) {
+                Log::info('Menggunakan kembali koneksi Mikrotik yang ada.', ['server' => $server->name]);
+                return $this->activeClients[$server->id];
+            }
+
             $port = isset($server->port) ? (int)$server->port : 8728;
 
-            Log::info('Connecting to Mikrotik', [
+            Log::info('Membuat koneksi baru ke Mikrotik.', [
+                'server' => $server->name,
                 'host' => $server->host_ip,
                 'user' => $server->username,
                 'port' => $port
@@ -191,13 +50,18 @@ class MikrotikConnectionService
                 'user' => $server->username,
                 'pass' => $server->password,
                 'port' => $port,
-                'timeout' => 10,
-                'attempts' => 2
+                'timeout' => 30, // Timeout koneksi dalam detik
+                'attempts' => 2, // Jumlah percobaan koneksi
             ]);
 
+            // Simpan client yang baru dibuat ke dalam array untuk digunakan kembali.
+            $this->activeClients[$server->id] = $client;
+
             return $client;
+
         } catch (\Exception $e) {
             Log::error('Mikrotik Connection Error: ' . $e->getMessage(), [
+                'server' => $server->name ?? 'unknown',
                 'host' => $server->host_ip ?? 'unknown',
                 'trace' => $e->getTraceAsString()
             ]);
@@ -205,350 +69,193 @@ class MikrotikConnectionService
         }
     }
 
-
     /**
-     * Ubah profile PPPoE Secret dan aktifkan akun
-     * 
-     * @param string $secretName
-     * @param string $newProfile
+     * [DINONAKTIFKAN] Mengumpulkan dan menyimpan metrik dari server Mikrotik.
+     * Logika di dalam fungsi ini dinonaktifkan sesuai permintaan untuk menghindari error
+     * 'Undefined array key 0' dan 'Stream timed out' yang muncul di log.
+     *
+     * @param MikrotikServer|null $server
      * @return bool
      */
-    public function updatePppoeProfile(string $secretName, string $newProfile)
+    public function collectMetrics(MikrotikServer $server = null)
     {
-        $client = $this->connect();
+        Log::info('Fungsi collectMetrics dipanggil, namun telah dinonaktifkan sesuai konfigurasi.', ['server' => $server->name ?? 'unknown']);
+        // Mengembalikan true untuk menandakan tugas selesai tanpa error.
+        // Fungsi ini sengaja dikosongkan untuk mengatasi error pada log dan karena tidak lagi dibutuhkan.
+        return true;
+    }
 
-        if (!$client) {
+    /**
+     * Ubah profile PPPoE Secret dan status aktif/nonaktif akun.
+     *
+     * @param string $secretName
+     * @param string $newProfile
+     * @param MikrotikServer $server
+     * @return bool
+     */
+    public function updatePppoeProfile(string $secretName, string $newProfile, MikrotikServer $server): bool
+    {
+        if (!($client = $this->connect($server))) {
             return false;
         }
 
         try {
-            // Log detail profile yang akan diupdate
-            Log::info('Attempting to update PPPoE profile', [
+            $isSuspended = (strtoupper($newProfile) === 'SUSPENDED');
+            Log::info('Attempting to update PPPoE profile.', [
                 'secretName' => $secretName,
                 'newProfile' => $newProfile,
-                'isSuspended' => strtoupper($newProfile) === 'SUSPENDED'
+                'isSuspended' => $isSuspended,
+                'server' => $server->name
             ]);
             
-            // Cari ID secret berdasarkan name
-            $query = new Query('/ppp/secret/print');
-            $query->where('name', $secretName);
-            $response = $client->query($query)->read();
-            
-            Log::info('Found PPPoE Secret', [
-                'secretName' => $secretName,
-                'response' => $response
-            ]);
+            $secret = $this->getPppoeSecretDetails($secretName, $server);
 
-            if (empty($response)) {
-                Log::warning('PPPoE Secret not found', [
-                    'secretName' => $secretName
-                ]);
+            if (empty($secret)) {
+                Log::warning('PPPoE Secret not found, cannot update.', ['secretName' => $secretName, 'server' => $server->name]);
                 return false;
             }
 
-            $secretId = $response[0]['.id'];
-            $currentProfile = $response[0]['profile'] ?? 'unknown';
-            $currentDisabled = isset($response[0]['disabled']) && $response[0]['disabled'] === 'true';
+            $secretId = $secret['.id'];
             
-            Log::info('Current PPPoE status before update', [
-                'secretName' => $secretName,
-                'currentProfile' => $currentProfile,
-                'isCurrentlyDisabled' => $currentDisabled,
-                'newProfile' => $newProfile
-            ]);
-            
-            // Update profile PPPoE
             $updateQuery = new Query('/ppp/secret/set');
             $updateQuery->equal('.id', $secretId);
             $updateQuery->equal('profile', $newProfile);
+            $updateQuery->equal('disabled', $isSuspended ? 'yes' : 'no');
             
-            // Check if we're suspending or activating
-            $isSuspended = strtoupper($newProfile) === 'SUSPENDED';
+            $client->query($updateQuery)->read();
             
-            // Set disabled status based on profile
-            if ($isSuspended) {
-                $updateQuery->equal('disabled', 'yes');
-            } else {
-                $updateQuery->equal('disabled', 'no');
-            }
-            
-            $updateResponse = $client->query($updateQuery)->read();
-            
-            Log::info('Update PPPoE Profile Response', [
-                'secretName' => $secretName,
-                'newProfile' => $newProfile,
-                'disabled' => $isSuspended ? 'yes' : 'no',
-                'response' => $updateResponse
-            ]);
-            
-            // Verifikasi status terbaru
-            $verifyQuery = new Query('/ppp/secret/print');
-            $verifyQuery->where('name', $secretName);
-            $verifyResponse = $client->query($verifyQuery)->read();
-            
-            if (!empty($verifyResponse)) {
-                $newDisabled = isset($verifyResponse[0]['disabled']) && $verifyResponse[0]['disabled'] === 'true';
-                $newProfileSet = isset($verifyResponse[0]['profile']) && $verifyResponse[0]['profile'] === $newProfile;
-                
-                Log::info('Verification after update', [
-                    'secretName' => $secretName,
-                    'profile_updated' => $newProfileSet,
-                    'is_disabled' => $newDisabled,
-                    'expected_disabled' => $isSuspended,
-                    'current_profile' => $verifyResponse[0]['profile'] ?? 'unknown'
-                ]);
-            }
-
+            Log::info('Successfully sent update command for PPPoE Profile.', ['secretName' => $secretName, 'newProfile' => $newProfile]);
             return true;
+
         } catch (\Exception $e) {
             Log::error('Error updating PPPoE Profile: ' . $e->getMessage(), [
                 'secretName' => $secretName,
                 'newProfile' => $newProfile,
+                'server' => $server->name,
                 'trace' => $e->getTraceAsString()
             ]);
             return false;
         }
     }
-    
+
     /**
-     * Nonaktifkan PPPoE Secret dengan mengubah profile ke SUSPENDED dan set disabled=yes
-     * 
-     * @param string $secretName
+     * Hapus koneksi PPPoE yang sedang aktif untuk memaksa logout.
+     *
+     * @param string $username
+     * @param MikrotikServer $server
      * @return bool
      */
-    public function disablePppoeSecret(string $secretName)
+    public function removePppoeActiveConnection(string $username, MikrotikServer $server): bool
     {
-        $client = $this->connect();
-
-        if (!$client) {
+        if (!($client = $this->connect($server))) {
             return false;
         }
 
         try {
-            // Cari ID secret berdasarkan name
-            $query = new Query('/ppp/secret/print');
-            $query->where('name', $secretName);
-            $response = $client->query($query)->read();
-            
-            if (empty($response)) {
-                Log::warning('PPPoE Secret not found for disable', [
-                    'secretName' => $secretName
-                ]);
-                return false;
-            }
-            
-            $secretId = $response[0]['.id'];
-            $currentProfile = $response[0]['profile'] ?? 'unknown';
-            
-            Log::info('Disabling PPPoE Secret', [
-                'secretName' => $secretName,
-                'currentProfile' => $currentProfile
-            ]);
-            
-            // Set disabled=yes dan ubah profile ke SUSPENDED
-            $updateQuery = new Query('/ppp/secret/set');
-            $updateQuery->equal('.id', $secretId);
-            $updateQuery->equal('disabled', 'yes');
-            $updateQuery->equal('profile', 'SUSPENDED');
-            $response = $client->query($updateQuery)->read();
-            
-            Log::info('Disable PPPoE Secret response', [
-                'secretName' => $secretName,
-                'method' => 'set disabled=yes and profile=SUSPENDED',
-                'response' => $response
-            ]);
-            
-            return true;
-        } catch (\Exception $e) {
-            Log::error('Error disabling PPPoE Secret: ' . $e->getMessage(), [
-                'secretName' => $secretName
-            ]);
-            return false;
-        }
-    }
-
-    /**
-     * Hapus koneksi PPPoE yang sedang aktif.
-     * Fungsinya untuk memaksa logout pelanggan secara instan.
-     *
-     * @param string $username Nama user PPPoE yang koneksinya akan dihapus.
-     * @return bool True jika berhasil atau jika user tidak ditemukan (sudah tidak aktif).
-     */
-    public function removePppoeActiveConnection(string $username)
-    {
-        $client = $this->connect();
-        if (!$client) {
-            return false;
-        }
-
-        try {
-            // 1. Cari koneksi aktif berdasarkan nama user di /ppp/active
             $query = new Query('/ppp/active/print');
             $query->where('name', $username);
             $activeConnections = $client->query($query)->read();
 
-            // 2. Jika tidak ada koneksi aktif, berarti pelanggan sudah offline. Anggap berhasil.
             if (empty($activeConnections)) {
-                Log::info('No active PPPoE connection found for user. No action needed.', [
-                    'username' => $username
-                ]);
-                return true; // Berhasil, karena memang tidak ada yang perlu dihapus.
+                Log::info('No active PPPoE connection found for user. No action needed.', ['username' => $username, 'server' => $server->name]);
+                return true;
             }
 
-            // 3. Jika koneksi ditemukan, ambil ID-nya dan kirim perintah hapus
             $connectionId = $activeConnections[0]['.id'];
-            Log::info('Found active PPPoE connection. Removing...', [
-                'username' => $username,
-                'connection_id' => $connectionId
-            ]);
+            Log::info('Found active PPPoE connection. Removing...', ['username' => $username, 'connection_id' => $connectionId, 'server' => $server->name]);
 
             $removeQuery = new Query('/ppp/active/remove');
             $removeQuery->equal('.id', $connectionId);
             $client->query($removeQuery)->read();
 
-            Log::info('Successfully removed active PPPoE connection.', [
-                'username' => $username
-            ]);
-
+            Log::info('Successfully removed active PPPoE connection.', ['username' => $username, 'server' => $server->name]);
             return true;
 
         } catch (\Exception $e) {
             Log::error('Error removing active PPPoE connection: ' . $e->getMessage(), [
                 'username' => $username,
+                'server' => $server->name,
                 'trace' => $e->getTraceAsString()
             ]);
             return false;
         }
     }
 
-    
-
-    
-
     /**
-     * Aktifkan PPPoE Secret dengan mengubah profile sesuai parameter dan set disabled=no
-     * 
+     * [PERUBAHAN PENTING] Dapatkan detail profil PPPoE saat ini dari server tertentu.
+     *
      * @param string $secretName
-     * @param string|null $originalProfile Profile yang akan digunakan, jika null akan menggunakan profile existing
-     * @return bool
-     */
-    public function enablePppoeSecret(string $secretName, string $originalProfile = null)
-    {
-        $client = $this->connect();
-
-        if (!$client) {
-            return false;
-        }
-
-        try {
-            // Cari ID secret berdasarkan name
-            $query = new Query('/ppp/secret/print');
-            $query->where('name', $secretName);
-            $response = $client->query($query)->read();
-            
-            if (empty($response)) {
-                Log::warning('PPPoE Secret not found for enable', [
-                    'secretName' => $secretName
-                ]);
-                return false;
-            }
-            
-            $secretId = $response[0]['.id'];
-            $currentProfile = $response[0]['profile'] ?? 'unknown';
-            
-            Log::info('Enabling PPPoE Secret', [
-                'secretName' => $secretName,
-                'currentProfile' => $currentProfile,
-                'originalProfile' => $originalProfile
-            ]);
-            
-            // Set disabled=no dan update profile jika disediakan
-            $updateQuery = new Query('/ppp/secret/set');
-            $updateQuery->equal('.id', $secretId);
-            $updateQuery->equal('disabled', 'no');
-            
-            // Jika original profile diberikan dan current profile adalah SUSPENDED, kembalikan ke profile asli
-            if ($originalProfile && strtoupper($currentProfile) === 'SUSPENDED') {
-                $updateQuery->equal('profile', $originalProfile);
-                Log::info('Restoring original profile', [
-                    'secretName' => $secretName,
-                    'fromProfile' => $currentProfile,
-                    'toProfile' => $originalProfile
-                ]);
-            }
-            
-            $response = $client->query($updateQuery)->read();
-            
-            Log::info('Enable PPPoE Secret response', [
-                'secretName' => $secretName,
-                'method' => 'set disabled=no' . ($originalProfile ? ' and restore profile' : ''),
-                'response' => $response
-            ]);
-            
-            // Verifikasi hasil
-            $verifyQuery = new Query('/ppp/secret/print');
-            $verifyQuery->where('name', $secretName);
-            $verifyResponse = $client->query($verifyQuery)->read();
-            
-            if (!empty($verifyResponse)) {
-                $newDisabled = isset($verifyResponse[0]['disabled']) && $verifyResponse[0]['disabled'] === 'true';
-                $currentProfile = $verifyResponse[0]['profile'] ?? 'unknown';
-                
-                Log::info('Verification after enable', [
-                    'secretName' => $secretName,
-                    'current_profile' => $currentProfile,
-                    'is_disabled' => $newDisabled,
-                    'expected_disabled' => false
-                ]);
-            }
-            
-            return true;
-        } catch (\Exception $e) {
-            Log::error('Error enabling PPPoE Secret: ' . $e->getMessage(), [
-                'secretName' => $secretName
-            ]);
-            return false;
-        }
-    }
-    
-    /**
-     * Dapatkan detail profil PPPoE saat ini
-     * 
-     * @param string $secretName
+     * @param MikrotikServer $server
      * @return array|null
      */
-    public function getPppoeSecretDetails(string $secretName)
+    public function getPppoeSecretDetails(string $secretName, MikrotikServer $server)
     {
-        $client = $this->connect();
-
-        if (!$client) {
+        if (!($client = $this->connect($server))) {
             return null;
         }
 
         try {
-            // Cari ID secret berdasarkan name
             $query = new Query('/ppp/secret/print');
             $query->where('name', $secretName);
             $response = $client->query($query)->read();
 
             if (empty($response)) {
-                Log::warning('PPPoE Secret not found', [
-                    'secretName' => $secretName
-                ]);
+                Log::debug('PPPoE Secret not found on getPppoeSecretDetails.', ['secretName' => $secretName, 'server' => $server->name]);
                 return null;
             }
-
-            Log::info('PPPoE Secret details', [
-                'secretName' => $secretName,
-                'details' => $response[0]
-            ]);
-
+            
             return $response[0];
+
         } catch (\Exception $e) {
             Log::error('Error getting PPPoE Secret details: ' . $e->getMessage(), [
-                'secretName' => $secretName
+                'secretName' => $secretName,
+                'server' => $server->name,
+                'trace' => $e->getTraceAsString()
             ]);
             return null;
+        }
+    }
+
+    /**
+     * Membuat secret PPPoE baru di server tertentu.
+     *
+     * @param array $data Data untuk secret baru.
+     * @param MikrotikServer $server Server tujuan.
+     * @return bool
+     */
+    public function createPppoeSecret(array $data, MikrotikServer $server): bool
+    {
+        if (!($client = $this->connect($server))) {
+            Log::error('Gagal koneksi ke Mikrotik saat akan membuat secret.', ['server' => $server->name]);
+            return false;
+        }
+
+        try {
+            $existing = $this->getPppoeSecretDetails($data['name'], $server);
+
+            if (!empty($existing)) {
+                Log::warning('PPPoE secret dengan nama ini sudah ada, proses pembuatan dilewati.', ['name' => $data['name'], 'server' => $server->name]);
+                return true; // Anggap berhasil jika sudah ada
+            }
+
+            $createQuery = new Query('/ppp/secret/add');
+            foreach ($data as $key => $value) {
+                if ($value !== null) { // Pastikan tidak mengirim nilai null
+                    $createQuery->equal($key, $value);
+                }
+            }
+
+            $client->query($createQuery)->read();
+            Log::info('Berhasil membuat PPPoE secret baru.', ['name' => $data['name'], 'server' => $server->name]);
+            return true;
+
+        } catch (\Exception $e) {
+            Log::error('Exception saat membuat PPPoE secret: ' . $e->getMessage(), [
+                'data' => $data,
+                'server' => $server->name,
+                'trace' => $e->getTraceAsString()
+            ]);
+            return false;
         }
     }
 }

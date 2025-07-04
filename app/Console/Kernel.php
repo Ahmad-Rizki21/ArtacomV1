@@ -14,68 +14,36 @@ class Kernel extends ConsoleKernel
      * @var array
      */
     protected $commands = [
-        \App\Console\Commands\CheckDueDateCommand::class,
+       // \App\Console\Commands\CheckDueDateCommand::class,
     ];
 
     /**
      * Define the application's command schedule.
      */
-    protected function schedule(Schedule $schedule): void
-    {
-        // =================================================================
-        // JADWAL UTAMA
-        // =================================================================
+   protected function schedule(Schedule $schedule): void
+{
+    // =================================================================
+    // JADWAL HARIAN (TIDAK BERUBAH)
+    // =================================================================
+    $schedule->command('invoice:generate-due --days=5')->dailyAt('03:00');
 
-        // 1. Generate Invoice: Dijalankan sekali sehari.
-        // WAKTU: '03:00' UTC adalah jam 10:00 pagi WIB (GMT+7).
-        // Sesuaikan '03:00' jika jam target Anda berbeda.
-        $schedule->command('invoice:generate-due --days=5')
-            ->dailyAt('03:00') // Diubah dari '10:00' ke '03:00' target 10:00 WIB
-            ->withoutOverlapping()
-            ->appendOutputTo(storage_path('logs/invoice-scheduler.log'));
+    // =================================================================
+    // PERINTAH MASTER TUNGGAL (SETIAP 5 MENIT)
+    // =================================================================
+    // HANYA INI yang menjalankan semua tugas terkait MikroTik
+    $schedule->command('mikrotik:run-all-tasks')
+             ->everyFiveMinutes()
+             ->withoutOverlapping(15)
+             ->appendOutputTo(storage_path('logs/mikrotik-master-runner.log'));
 
-        // 2. Cek Langganan Overdue: Dijalankan setiap 15 menit.
-        $schedule->command('app:check-overdue-subscriptions')
-            ->everyFifteenMinutes()
-            ->appendOutputTo(storage_path('logs/subscription-checks.log'));
-
-        // 3. Cek Status Pembayaran Invoice: Dijalankan setiap 15 menit.
-        $schedule->command('invoice:check-paid-status')
-            ->everyFifteenMinutes()
-            ->appendOutputTo(storage_path('logs/invoice-paid-status.log'));
-
-        // =================================================================
-        // JADWAL PEMELIHARAAN (Berjalan setiap 5 menit)
-        // =================================================================
-
-        // Daftar perintah yang berjalan setiap 5 menit
-        $fiveMinuteCommands = [
-            'check:due-date'           => 'logs/due-date-check.log',
-            'app:sync-mikrotik-status' => 'logs/mikrotik-sync.log',
-            'monitor:mikrotik'         => 'logs/mikrotik-monitor.log',
-            'server:capture-status'    => 'logs/server-status.log',
-            'mikrotik:create-secret'   => 'logs/mikrotik-create-secret.log',
-        ];
-
-        foreach ($fiveMinuteCommands as $command => $logFile) {
-            $schedule->command($command)
-                ->everyFiveMinutes()
-                ->withoutOverlapping(10)
-                ->appendOutputTo(storage_path($logFile));
-        }
-        
-        // Menjalankan fungsi pengecekan status langganan internal setiap 5 menit
-        $schedule->call(function () {
-            Langganan::checkAllSubscriptionStatus();
-            
-        })->withoutOverlapping()->everyFiveMinutes()->appendOutputTo(storage_path('logs/langganan-status-check.log'));
-
-        // Menjalankan queue worker setiap 5 menit untuk memproses job
-        $schedule->command('queue:work --stop-when-empty --tries=3')
-            ->everyFiveMinutes()
-            ->withoutOverlapping()
-            ->appendOutputTo(storage_path('logs/queue-worker.log'));
-    }
+    // =================================================================
+    // QUEUE WORKER (TETAP DIPERLUKAN)
+    // =================================================================
+    // Perintah ini penting untuk memproses jobs, biarkan aktif.
+    $schedule->command('queue:work --stop-when-empty --tries=3')
+             ->everyFiveMinutes()
+             ->withoutOverlapping();
+}
 
     /**
      * Register the commands for the application.

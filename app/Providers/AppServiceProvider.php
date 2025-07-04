@@ -13,6 +13,7 @@ use Spatie\Health\Checks\Checks\DebugModeCheck;
 use Spatie\Health\Checks\Checks\EnvironmentCheck;
 use App\Observers\DataTeknisObserver;
 use App\Observers\InvoiceObserver;
+use App\Services\MikrotikConnectionService;
 use App\Models\DataTeknis;
 use App\Models\Invoice;
 use Spatie\CpuLoadHealthCheck\CpuLoadCheck;
@@ -27,7 +28,9 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register()
     {
-        //
+        $this->app->singleton(MikrotikConnectionService::class, function ($app) {
+        return new MikrotikConnectionService();
+        });
     }
 
     /**
