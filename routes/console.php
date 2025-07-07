@@ -1,50 +1,43 @@
 <?php
 
+use Illuminate\Support\Facades\Schedule;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
-use Carbon\Carbon;
-use Illuminate\Support\Facades\Schedule;
-use App\Services\GeneratorDueInvoices;
-use App\Models\Langganan;
+
+/*
+|--------------------------------------------------------------------------
+| Console Routes
+|--------------------------------------------------------------------------
+|
+| This file is where you may define all of your Closure based console
+| commands. Each Closure is bound to a command instance allowing a
+| simple approach to interacting with each command's IO methods.
+|
+*/
 
 Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
 })->purpose('Display an inspiring quote');
 
-// Command untuk testing invoice generator pada tanggal tertentu
-// Perbaikan parameter nullable dengan syntax PHP 8
-// Artisan::command('invoice:test-generate {date?}', function (?string $date = null) {
-//     $targetDate = $date ? Carbon::parse($date) : Carbon::now();
-    
-//     $this->comment("Testing invoice generator untuk tanggal: " . $targetDate->format('Y-m-d'));
-    
-//     // Override tanggal jatuh tempo untuk testing dengan opsi --force
-//     $this->call('invoice:generate-due', [
-//         '--force' => true
-//     ]);
-    
-//     $this->comment("Invoice generator telah dijalankan dengan mode force.");
-    
-// })->purpose('Test generate invoice for a specific date');
 
-// Command untuk memaksa generate invoice (untuk testing cepat)
-// Artisan::command('invoice:force-generate', function () {
-//     $this->info('Memaksa generate invoice untuk semua pelanggan aktif tanpa melihat tanggal jatuh tempo...');
-//     $this->call('invoice:generate-due', [
-//         '--force' => true
-//     ]);
-// })->purpose('Force generate invoices for all active customers');
+// =================================================================
+// SOLUSI FINAL: Penjadwalan Ditetapkan di Sini
+// =================================================================
 
+// TUGAS 1: Menjalankan semua tugas penting terkait Mikrotik (setiap 5 menit)
+Schedule::command('mikrotik:run-all-tasks')
+         ->everyFiveMinutes()
+         ->withoutOverlapping(15)
+         ->appendOutputTo(storage_path('logs/mikrotik-runner.log'));
 
-// Command untuk menjalankan invoice
-// Schedule::call(new GeneratorDueInvoices)->everyMinute();
-// Schedule::command('invoice:generate-due')->everyFiveMinutes(); //tiap jam 10 pagi
-// Schedule::command('app:check-overdue-subscriptions')->everyFiveMinutes(); // tiap 30 Menit
-// Schedule::command('app:sync-mikrotik')->everyFiveMinutes();
-// Schedule::command('invoice:check-paid-status')->everyFiveMinutes(); // tiap 1 Menit
-// Schedule::command('monitor:mikrotik')->everyFiveMinutes(); // tiap 1 Menit
+// TUGAS 2: Generate invoice untuk yang akan jatuh tempo (berjalan sekali sehari)
+Schedule::command('invoice:generate-due --days=5')->dailyAt('03:00');
 
+// TUGAS 3: Menjalankan queue worker (PENTING, JANGAN DIHAPUS)
+Schedule::command('queue:work --stop-when-empty --tries=3')
+         ->everyFiveMinutes()
+         ->withoutOverlapping();
 
-// Schedule::call(function () {
-//     Langganan::checkAllSubscriptionStatus();
-// })->everyMinute();
+// Catatan: Perintah 'filament-excel:prune' sudah otomatis didaftarkan oleh paketnya,
+// jadi tidak perlu didaftarkan lagi di sini untuk menghindari duplikasi jadwal.
+

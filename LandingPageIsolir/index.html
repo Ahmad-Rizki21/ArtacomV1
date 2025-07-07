@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tagihan Internet - Layanan Tersuspensi</title>
+    
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://resource.trickle.so/vendor_lib/unpkg/lucide-static@0.516.0/font/lucide.css" rel="stylesheet">
+
+    <style type="text/tailwindcss">
+        @layer utilities {
+            .text-shadow { text-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+            .animated-gradient-bg {
+                background: linear-gradient(-45deg, #eef2ff, #f3e8ff, #dbeafe, #e0f2fe);
+                background-size: 400% 400%;
+                animation: gradient-bg 15s ease infinite;
+            }
+            .fade-in { animation: fade-in 0.8s ease-out forwards; }
+            .pulse-animation { animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
+            @keyframes gradient-bg {
+                0% { background-position: 0% 50%; }
+                50% { background-position: 100% 50%; }
+                100% { background-position: 0% 50%; }
+            }
+            @keyframes fade-in {
+                from { opacity: 0; transform: translateY(20px); }
+                to { opacity: 1; transform: translateY(0); }
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        // Semua komponen React digabungkan di sini
+
+        // --- Komponen StatusCard (VERSI SEDERHANA) ---
+        function StatusCard() {
+            return (
+                <div className="bg-white/60 backdrop-blur-lg border border-gray-200/50 rounded-xl shadow-lg p-6 mb-6">
+                    <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
+                        <div className="flex items-center space-x-4">
+                            <div className="w-12 h-12 sm:w-16 sm:h-16 bg-red-100 rounded-full flex items-center justify-center pulse-animation">
+                                <div className="icon-wifi-off text-xl sm:text-2xl text-red-600"></div>
+                            </div>
+                            <div>
+                                <h2 className="text-xl sm:text-2xl font-bold text-gray-900 mb-1">Layanan Tersuspensi</h2>
+                                {/* Bagian ID Pelanggan dihapus untuk penyederhanaan */}
+                                <p className="text-sm sm:text-base text-gray-600">Silakan hubungi customer service kami jika Anda tidak mengetahui ID Pelanggan Anda.</p>
+                            </div>
+                        </div>
+                        <div className="self-start sm:text-right">
+                            <div className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-red-100 text-red-800">
+                                <div className="w-2 h-2 bg-red-500 rounded-full mr-2 pulse-animation"></div>
+                                Tidak Aktif
+                            </div>
+                        </div>
+                    </div>
+                    <div className="bg-red-50 border-l-4 border-red-500 text-red-700 p-4 rounded-lg mt-4">
+                        <div className="flex items-center space-x-2 mb-2">
+                            <div className="icon-alert-triangle text-lg"></div>
+                            <span className="font-semibold">Layanan internet Anda telah disuspend</span>
+                        </div>
+                        <p className="text-sm">
+                            Akses internet dihentikan sementara karena tagihan yang belum dibayar. 
+                            Silakan lakukan pembayaran untuk mengaktifkan kembali layanan.
+                        </p>
+                    </div>
+                </div>
+            );
+        }
+
+        // --- Komponen ContactSupport (Tidak ada perubahan) ---
+        function ContactSupport() {
+            const supportChannels = [
+                { name: 'WhatsApp', icon: 'message-circle', contact: '+62 822-2361-6884 | +62 811-8800-7312', available: '24/7' },
+                { name: 'Telepon', icon: 'phone', contact: '+62 811-8800-7311', available: '24/7' },
+                { name: 'Email', icon: 'mail', contact: 'noc-artacom@ajnusa.com', available: '< 2 jam' }
+            ];
+            return (
+                <div className="bg-white/60 backdrop-blur-lg border border-gray-200/50 rounded-xl shadow-lg p-6">
+                    <h3 className="text-xl font-bold text-gray-900 mb-4">Butuh Bantuan?</h3>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+                        {supportChannels.map((channel, index) => (
+                            <div key={index} className="text-center p-4 border border-gray-200 rounded-lg hover:border-blue-300 transition-colors">
+                                <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                                    <div className={`icon-${channel.icon} text-xl text-blue-600`}></div>
+                                </div>
+                                <h4 className="font-semibold text-gray-900 mb-1">{channel.name}</h4>
+                                <p className="text-sm text-gray-600 mb-2">{channel.contact}</p>
+                                <p className="text-xs text-green-600 mb-3">Respon {channel.available}</p>
+                            </div>
+                        ))}
+                    </div>
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                        <div className="flex items-start space-x-3">
+                            <div className="icon-info text-lg text-blue-600 mt-0.5"></div>
+                            <div>
+                                <h4 className="font-semibold text-blue-900 mb-1">Tips Pembayaran Cepat</h4>
+                                <ul className="text-sm text-blue-700 space-y-1">
+                                    <li>• Gunakan Virtual Account untuk pembayaran otomatis</li>
+                                    <li>• Set reminder pembayaran di smartphone Anda</li>
+                                    <li>• Daftar auto-debit untuk kemudahan pembayaran</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        // --- Komponen Utama App (Tidak ada perubahan signifikan) ---
+        function App() {
+            const DisconnectedIllustration = () => (
+                <svg width="200" height="150" viewBox="0 0 553 428" fill="none" xmlns="http://www.w3.org/2000/svg" className="mx-auto mb-6 text-gray-400">
+                    <path d="M492.344 330.175C538.933 286.275 552.167 221.609 532.533 162.742C512.899 103.875 462.533 56.9752 402.056 36.8752C341.578 16.7752 276.533 25.1419 222.844 59.8419C169.156 94.5419 131.767 152.075 122.956 216.042" stroke="currentColor" strokeWidth="15" strokeMiterlimit="10" strokeLinecap="round"/>
+                    <path d="M30.7334 213.808C5.2334 266.342 12.0167 329.075 48.6834 376.675C85.3501 424.275 147.533 450.642 212.433 446.508C277.333 442.375 338.25 408.075 376.5 354.742" stroke="#d1d5db" strokeWidth="15" strokeMiterlimit="10" strokeLinecap="round"/>
+                    <path d="M402.167 427.5H233.917C224.237 427.5 216.25 419.513 216.25 409.833V392.167C216.25 382.487 224.237 374.5 233.917 374.5H402.167C411.846 374.5 419.833 382.487 419.833 392.167V409.833C419.833 419.513 411.846 427.5 402.167 427.5Z" stroke="currentColor" strokeWidth="14" strokeMiterlimit="10"/>
+                    <path d="M471.667 401H454" stroke="currentColor" strokeWidth="14" strokeMiterlimit="10" strokeLinecap="round"/>
+                    <path d="M182.25 401H164.583" stroke="currentColor" strokeWidth="14" strokeMiterlimit="10" strokeLinecap="round"/>
+                    <line x1="289" y1="223" x2="313" y2="199" stroke="#ef4444" strokeWidth="20" strokeLinecap="round"/>
+                    <line x1="313" y1="223" x2="289" y2="199" stroke="#ef4444" strokeWidth="20" strokeLinecap="round"/>
+                    <circle cx="419.833" cy="216.042" r="17.6667" fill="#3b82f6"/>
+                    <circle cx="122.956" cy="216.042" r="17.6667" fill="#3b82f6"/>
+                </svg>
+            );
+
+            return (
+                <div className="min-h-screen animated-gradient-bg">
+                    <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12">
+                        <div className="text-center mb-8">
+                            <div className="fade-in" style={{ animationDelay: '100ms' }}>
+                                <DisconnectedIllustration />
+                            </div>
+                            <div className="fade-in" style={{ animationDelay: '200ms' }}>
+                                <h1 className="text-3xl sm:text-4xl font-bold text-gray-900 mb-3 text-shadow">
+                                    Akses Internet Anda Terhenti
+                                </h1>
+                                <p className="text-base sm:text-lg text-gray-600 max-w-2xl mx-auto">
+                                    Jangan khawatir! Aktifkan kembali layanan dengan melakukan pembayaran tagihan Anda.
+                                </p>
+                            </div>
+                        </div>
+                        <div className="fade-in" style={{ animationDelay: '300ms' }}><StatusCard /></div>
+                        <div className="fade-in" style={{ animationDelay: '400ms' }}><ContactSupport /></div>
+                    </main>
+                    <footer className="mt-12 fade-in" style={{ animationDelay: '500ms' }}>
+                        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+                            <div className="text-center text-sm text-gray-500">
+                                <p>&copy; {new Date().getFullYear()} Artacomindo Jejaring Nusa. Semua hak dilindungi. | 
+                                    <a href="#" className="text-blue-600 hover:text-blue-700 ml-1">Syarat & Ketentuan</a> | 
+                                    <a href="#" className="text-blue-600 hover:text-blue-700 ml-1">Kebijakan Privasi</a>
+                                </p>
+                            </div>
+                        </div>
+                    </footer>
+                </div>
+            );
+        }
+
+        // --- Render Aplikasi ke DOM ---
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>

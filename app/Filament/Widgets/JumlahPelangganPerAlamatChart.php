@@ -39,7 +39,7 @@ class JumlahPelangganPerAlamatChart extends ApexChartWidget
             'Rusun Tipar Cakung',
             'Rusun Albo',
             'Perumahan Tambun',
-            'Perumahan Waringin',
+            'Perumahan Waringin Kurung',
             'Perumahan Parama',
         ];
 

@@ -474,7 +474,9 @@ private function formatReferenceId(Invoice $invoice): string
         
         // Dapatkan nama pelanggan (ambil kata pertama saja)
         $pelanggan = $invoice->pelanggan;
-        $namaPelanggan = $pelanggan ? strtolower(explode(' ', trim($pelanggan->nama))[0]) : 'customer';
+        // $namaPelanggan = $pelanggan ? strtolower(explode(' ', trim($pelanggan->nama))[0]) : 'customer';
+        
+        $namaPelanggan = $pelanggan ? strtolower(preg_replace('/[^a-zA-Z0-9]+/', '_', trim($pelanggan->nama))) : 'customer';
         
         // Dapatkan bulan dalam bahasa Inggris
         $bulan = date('F', strtotime($invoice->tgl_invoice ?? now()));
