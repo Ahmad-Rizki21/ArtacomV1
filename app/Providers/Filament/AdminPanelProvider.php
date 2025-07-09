@@ -21,6 +21,7 @@ use Illuminate\View\Middleware\ShareErrorsFromSession;
 use App\Filament\Pages\EditProfilePage; // Tambahkan ini untuk edit profil
 use Devonab\FilamentEasyFooter\EasyFooterPlugin;
 use Nuxtifyts\DashStackTheme\DashStackThemePlugin;
+use CharrafiMed\GlobalSearchModal\GlobalSearchModalPlugin;
 use ShuvroRoy\FilamentSpatieLaravelHealth\FilamentSpatieLaravelHealthPlugin;
 use pxlrbt\FilamentEnvironmentIndicator\EnvironmentIndicatorPlugin;
 use \Croustibat\FilamentJobsMonitor\FilamentJobsMonitorPlugin;
@@ -123,6 +124,7 @@ class AdminPanelProvider extends PanelProvider
             ->plugins([
                 \BezhanSalleh\FilamentShield\FilamentShieldPlugin::make(),
                 \Cmsmaxinc\FilamentErrorPages\FilamentErrorPagesPlugin::make(),
+                GlobalSearchModalPlugin::make(),
                 EasyFooterPlugin::make()
                 ->withBorder()
                 ->withLogo(
