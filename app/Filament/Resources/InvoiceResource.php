@@ -51,8 +51,11 @@ class InvoiceResource extends Resource
 
     public static function getEloquentQuery(): Builder
     {
+        // return parent::getEloquentQuery()
+        //     ->with(['pelanggan', 'hargaLayanan']); 
         return parent::getEloquentQuery()
-            ->with(['pelanggan', 'hargaLayanan']); 
+        // Tambahkan 'pelanggan.langganan' untuk memuat relasi bersarang
+        ->with(['pelanggan.langganan', 'hargaLayanan']);
     }
 
     public static function form(Form $form): Form

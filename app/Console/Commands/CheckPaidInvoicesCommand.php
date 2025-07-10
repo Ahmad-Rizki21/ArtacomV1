@@ -28,7 +28,10 @@ class CheckPaidInvoicesCommand extends Command
     {
         $this->info('Starting to check status of unpaid invoices...');
         
-        $unpaidInvoices = Invoice::where('status_invoice', 'Menunggu Pembayaran')->get();
+        // $unpaidInvoices = Invoice::where('status_invoice', 'Menunggu Pembayaran')->get();
+        $unpaidInvoices = Invoice::with('langganan') // <-- Eager Load relasi langganan
+        ->where('status_invoice', 'Menunggu Pembayaran')
+        ->get();
 
         if ($unpaidInvoices->isEmpty()) {
             $this->info('No unpaid invoices to check.');
@@ -76,7 +79,8 @@ class CheckPaidInvoicesCommand extends Command
         $this->info("   Attempting to activate subscription for Pelanggan ID: {$invoice->pelanggan_id}");
 
         // 1. Cari langganan yang relevan
-        $langganan = Langganan::where('pelanggan_id', $invoice->pelanggan_id)->first();
+        // $langganan = Langganan::where('pelanggan_id', $invoice->pelanggan_id)->first();
+        $langganan = $invoice->langganan;
 
         if (!$langganan) {
             $this->error("   ERROR: Langganan not found for Pelanggan ID: {$invoice->pelanggan_id}.");

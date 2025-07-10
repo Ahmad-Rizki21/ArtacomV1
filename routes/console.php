@@ -21,16 +21,12 @@ Artisan::command('inspire', function () {
 
 // TUGAS 1: Menjalankan semua tugas penting terkait Mikrotik
 Schedule::command('mikrotik:run-all-tasks')
-         ->everyFiveMinutes()
-         ->withoutOverlapping(15)
-         ->appendOutputTo(storage_path('logs/mikrotik-runner.log'))
-         ->onSuccess(function () {
-             Artisan::call('telegram:send-status --status=success');
-         })
+        //  ->everyFifteenMinutes()
+        ->cron('*/20 * * * *')
+        ->withoutOverlapping(15)
+         ->appendOutputTo(storage_path('logs/mikrotik-runner.log'));
          // Menggunakan onFailure versi sederhana yang paling kompatibel
-         ->onFailure(function () {
-             Artisan::call('telegram:send-status --status=failure');
-         });
+
 
 // TUGAS 2: Generate invoice untuk yang akan jatuh tempo
 Schedule::command('invoice:generate-due --days=5')->dailyAt('03:00');

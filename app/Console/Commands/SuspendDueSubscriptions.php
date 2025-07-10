@@ -38,7 +38,9 @@ class SuspendDueSubscriptions extends Command
             $query->where('tgl_jatuh_tempo', '<=', $yesterday);
         }
         
-        $overdueSubscriptions = $query->get();
+        // $overdueSubscriptions = $query->get();
+        $overdueSubscriptions = $query->with('invoices')->get(); // <-- Eager Load relasi invoices
+
         
         $this->info("Ditemukan {$overdueSubscriptions->count()} langganan aktif yang sudah melewati tanggal jatuh tempo");
         
@@ -62,9 +64,12 @@ class SuspendDueSubscriptions extends Command
             }
             
             // Cek jika ada invoice pada bulan ini yang belum dibayar
-            $hasUnpaidInvoice = Invoice::where('pelanggan_id', $langganan->pelanggan_id)
-                ->where('status_invoice', 'Menunggu Pembayaran')
-                ->exists();
+            // $hasUnpaidInvoice = Invoice::where('pelanggan_id', $langganan->pelanggan_id)
+            //     ->where('status_invoice', 'Menunggu Pembayaran')
+            //     ->exists();
+            $hasUnpaidInvoice = $langganan->invoices
+            ->where('status_invoice', 'Menunggu Pembayaran')
+            ->isNotEmpty();
                 
             if (!$hasUnpaidInvoice) {
                 $this->info("Pelanggan ID: {$langganan->pelanggan_id} tidak memiliki invoice yang belum dibayar. Dilewati.");
