@@ -24,10 +24,10 @@ class CheckOverdueSubscriptions extends Command
     {
         $this->info('Starting overdue subscription check...');
         $now = Carbon::now();
-        
-        // REVISI: Eager load relasi yang dibutuhkan
-        $overdueSubscriptions = Langganan::with(['invoices', 'pelanggan.dataTeknis'])
-            ->where('tgl_jatuh_tempo', '<', $now->subDay()->format('Y-m-d'))
+        $this->info('Current date: ' . $now->format('Y-m-d'));
+
+        // Hanya proses langganan yang lewat dari tanggal jatuh tempo lebih dari 1 hari
+        $overdueSubscriptions = Langganan::where('tgl_jatuh_tempo', '<', $now->subDay()->format('Y-m-d'))
             ->where('user_status', 'Aktif')
             ->get();
 
@@ -35,34 +35,35 @@ class CheckOverdueSubscriptions extends Command
 
         if ($overdueSubscriptions->isEmpty()) {
             $this->info('No overdue subscriptions to suspend. Exiting.');
-            return self::SUCCESS;
+            return 0;
         }
 
+        $this->info('Processing ' . $overdueSubscriptions->count() . ' overdue subscriptions...');
         $successCount = 0;
-        $failedCount = 0;
-        $skippedCount = 0;
 
         foreach ($overdueSubscriptions as $langganan) {
             $this->info('Processing subscription ID: ' . $langganan->id . ' for pelanggan ID: ' . $langganan->pelanggan_id);
 
-            // REVISI: Cek invoice dari data yang sudah dimuat
-            $latestPaidInvoice = $langganan->invoices
-                ->where('status_invoice', 'Lunas')
+            $latestInvoice = $langganan->invoices()
                 ->where('tgl_jatuh_tempo', $langganan->tgl_jatuh_tempo)
+                ->orderBy('tgl_invoice', 'desc')
                 ->first();
 
-            if ($latestPaidInvoice) {
+            if ($latestInvoice && $latestInvoice->status_invoice === 'Lunas' && $latestInvoice->tgl_pembayaran) {
                 $this->info('Paid invoice found for customer ID: ' . $langganan->pelanggan_id . '. Skipping suspension.');
-                $skippedCount++;
                 continue;
             }
 
+            $oldStatus = $langganan->user_status;
             $langganan->user_status = 'Suspend';
             $langganan->save();
 
             Log::info('Suspending overdue subscription', [
                 'pelanggan_id' => $langganan->pelanggan_id,
+                'previous_status' => $oldStatus,
                 'new_status' => 'Suspend',
+                'due_date' => $langganan->tgl_jatuh_tempo,
+                'suspension_date' => $now->format('Y-m-d')
             ]);
 
             $result = $this->mikrotikManager->handleSubscriptionStatus($langganan, 'suspend');
@@ -70,12 +71,15 @@ class CheckOverdueSubscriptions extends Command
                 $successCount++;
                 $this->info('Successfully suspended: ' . $langganan->pelanggan_id);
             } else {
-                $failedCount++;
                 $this->error('Failed to suspend: ' . $langganan->pelanggan_id);
+                Log::error('Failed to suspend subscription in Mikrotik', [
+                    'pelanggan_id' => $langganan->pelanggan_id,
+                    'dataTeknis' => optional($langganan->pelanggan)->dataTeknis ? 'Exists' : 'Missing'
+                ]);
             }
         }
 
-        $this->info("Suspension process complete. Success: {$successCount}, Failed: {$failedCount}, Skipped: {$skippedCount}");
-        return self::SUCCESS;
+        $this->info('Suspension process complete. Success: ' . $successCount . ' / ' . $overdueSubscriptions->count());
+        return 0;
     }
 }

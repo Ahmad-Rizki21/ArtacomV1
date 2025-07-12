@@ -7,6 +7,8 @@ use Illuminate\Auth\Listeners\SendEmailVerificationNotification;
 use Illuminate\Foundation\Support\Providers\EventServiceProvider as ServiceProvider;
 use Illuminate\Support\Facades\Event;
 use App\Events\LanggananCreatedWithoutDataTeknis;
+use App\Observers\LanggananObserver;
+use App\Models\Langganan;
 use App\Events\InvoiceCreated;
 use App\Listeners\SendInvoiceToXendit;
 use App\Listeners\SendNocNotification;
@@ -29,7 +31,10 @@ class EventServiceProvider extends ServiceProvider
                 \App\Listeners\SendNocNotificationToCreateDataTeknis::class,
             ],
 
-            
+            // Daftarkan listener baru kita
+            'App\Events\LanggananStatusChanged' => [
+            'App\Listeners\HandleMikrotikSubscription',
+            ],
 
         ],
         
@@ -44,6 +49,6 @@ class EventServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        //
+        Langganan::observe(LanggananObserver::class);
     }
 }

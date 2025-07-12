@@ -4,7 +4,6 @@ namespace App\Console\Commands;
 
 use Illuminate\Console\Command;
 use App\Models\Langganan;
-use App\Models\Invoice;
 use App\Services\MikrotikSubscriptionManager;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Log;
@@ -24,29 +23,22 @@ class SuspendDueSubscriptions extends Command
 
     public function handle()
     {
-        $today = Carbon::now()->format('Y-m-d');
-        $yesterday = Carbon::now()->subDay()->format('Y-m-d');
-        
+        $yesterday = Carbon::yesterday()->format('Y-m-d');
         $this->info("Memulai proses suspend pelanggan dengan tanggal jatuh tempo: {$yesterday} atau sebelumnya");
         
-        // Filter langganan yang jatuh tempo kemarin atau sebelumnya dan masih aktif
-        $query = Langganan::query()
-            ->where('user_status', 'Aktif');
+        $query = Langganan::query()->where('user_status', 'Aktif');
             
         if (!$this->option('force')) {
-            // Cari langganan yang jatuh tempo kemarin atau sebelumnya (bukan hari ini)
             $query->where('tgl_jatuh_tempo', '<=', $yesterday);
         }
         
-        // $overdueSubscriptions = $query->get();
-        $overdueSubscriptions = $query->with('invoices')->get(); // <-- Eager Load relasi invoices
-
+        $overdueSubscriptions = $query->with(['invoices', 'pelanggan.dataTeknis'])->get();
         
         $this->info("Ditemukan {$overdueSubscriptions->count()} langganan aktif yang sudah melewati tanggal jatuh tempo");
         
         if ($overdueSubscriptions->isEmpty()) {
             $this->info("Tidak ada langganan yang perlu disuspend.");
-            return 0;
+            return self::SUCCESS;
         }
         
         $successCount = 0;
@@ -56,20 +48,9 @@ class SuspendDueSubscriptions extends Command
         foreach ($overdueSubscriptions as $langganan) {
             $this->info("Memeriksa langganan ID: {$langganan->id} untuk pelanggan ID: {$langganan->pelanggan_id}");
             
-            // Periksa apakah sudah benar-benar melewati tanggal jatuh tempo
-            if ($langganan->tgl_jatuh_tempo > $yesterday && !$this->option('force')) {
-                $this->info("Pelanggan ID: {$langganan->pelanggan_id} belum melewati masa tenggang. Dilewati.");
-                $skippedCount++;
-                continue;
-            }
-            
-            // Cek jika ada invoice pada bulan ini yang belum dibayar
-            // $hasUnpaidInvoice = Invoice::where('pelanggan_id', $langganan->pelanggan_id)
-            //     ->where('status_invoice', 'Menunggu Pembayaran')
-            //     ->exists();
             $hasUnpaidInvoice = $langganan->invoices
-            ->where('status_invoice', 'Menunggu Pembayaran')
-            ->isNotEmpty();
+                ->where('status_invoice', 'Menunggu Pembayaran')
+                ->isNotEmpty();
                 
             if (!$hasUnpaidInvoice) {
                 $this->info("Pelanggan ID: {$langganan->pelanggan_id} tidak memiliki invoice yang belum dibayar. Dilewati.");
@@ -77,22 +58,16 @@ class SuspendDueSubscriptions extends Command
                 continue;
             }
             
-            // Suspend pelanggan
-            $oldStatus = $langganan->user_status;
-            
-            // Update status di database
             $langganan->user_status = 'Suspend';
             $langganan->save();
             
             Log::info("Mengubah status pelanggan menjadi Suspend karena sudah melewati jatuh tempo", [
                 'pelanggan_id' => $langganan->pelanggan_id,
-                'status_lama' => $oldStatus,
                 'status_baru' => 'Suspend',
-                'tgl_jatuh_tempo' => $langganan->tgl_jatuh_tempo
             ]);
             
-            // Update di Mikrotik
-            $dataTeknis = optional($langganan->pelanggan)->dataTeknis;
+            $dataTeknis = $langganan->pelanggan->dataTeknis ?? null;
+
             if (!$dataTeknis || !$dataTeknis->id_pelanggan) {
                 $this->warn("Pelanggan ID: {$langganan->pelanggan_id} tidak memiliki data teknis atau ID pelanggan. Gagal suspend di Mikrotik.");
                 $failedCount++;
@@ -100,7 +75,6 @@ class SuspendDueSubscriptions extends Command
             }
             
             try {
-                // Suspend di Mikrotik menggunakan MikrotikSubscriptionManager
                 $result = $this->mikrotikManager->handleSubscriptionStatus($langganan, 'suspend');
                 
                 if ($result) {
@@ -113,19 +87,12 @@ class SuspendDueSubscriptions extends Command
             } catch (\Exception $e) {
                 $failedCount++;
                 $this->error("✗ Error suspend pelanggan ID: {$langganan->pelanggan_id} - {$e->getMessage()}");
-                Log::error('Error suspend pelanggan di Mikrotik', [
-                    'pelanggan_id' => $langganan->pelanggan_id,
-                    'error' => $e->getMessage(),
-                    'trace' => $e->getTraceAsString()
-                ]);
+                Log::error('Error suspend pelanggan di Mikrotik', ['error' => $e->getMessage()]);
             }
         }
         
-        $this->info("Proses suspend selesai:");
-        $this->info("- Berhasil: {$successCount}");
-        $this->info("- Dilewati: {$skippedCount}");
-        $this->info("- Gagal: {$failedCount}");
+        $this->info("Proses suspend selesai: Berhasil: {$successCount}, Dilewati: {$skippedCount}, Gagal: {$failedCount}");
         
-        return 0;
+        return self::SUCCESS;
     }
 }

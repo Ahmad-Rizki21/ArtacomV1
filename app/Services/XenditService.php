@@ -10,7 +10,6 @@ use Exception;
 use Carbon\Carbon;
 use Filament\Notifications\Livewire\DatabaseNotifications;
 
-
 class XenditService
 {
     private const BRAND_MAPPING = [
@@ -78,17 +77,17 @@ class XenditService
                 throw new Exception('Data webhook tidak lengkap');
             }
 
-            // Cari invoice berdasarkan external_id yang diterima dari webhook
-            $invoice = Invoice::where('xendit_external_id', $data['external_id'])
-                            ->orWhere('invoice_number', $data['external_id'])
-                            ->first();
+            // Cari invoice dengan eager loading langganan
+            $invoice = Invoice::with('langganan')
+                ->where('xendit_external_id', $data['external_id'])
+                ->orWhere('invoice_number', $data['external_id'])
+                ->first();
 
             if (!$invoice) {
                 throw new Exception('Invoice tidak ditemukan');
             }
 
             // Trigger pembaruan UI notifikasi secara realtime
-   
             DatabaseNotifications::trigger('filament.notifications.database-notifications-trigger');
 
             // Pastikan tanggal invoice tersedia
@@ -120,7 +119,6 @@ class XenditService
                 $langganan = $invoice->langganan;
                 
                 if ($langganan) {
-                    // Format tanggal invoice
                     $tglInvoice = $invoice->tgl_invoice 
                         ? Carbon::parse($invoice->tgl_invoice)->format('Y-m-d')
                         : now()->format('Y-m-d');
@@ -130,7 +128,7 @@ class XenditService
                         'tanggal_invoice' => $tglInvoice
                     ]);
                     
-                    // PERBAIKAN: Update tgl_invoice_terakhir secara manual untuk memastikan
+                    // Update tgl_invoice_terakhir secara manual untuk memastikan
                     $langganan->tgl_invoice_terakhir = $tglInvoice;
                     $langganan->save();
                     
@@ -240,7 +238,7 @@ class XenditService
                 ->withHeaders([
                     'Idempotency-Key' => $idempotencyKey
                 ])
-                ->timeout(15) // Increased timeout
+                ->timeout(15)
                 ->post($url, $data);
 
             // Log respons untuk debugging
@@ -305,36 +303,77 @@ class XenditService
         return $finalBrand;
     }
 
+    // /**
+    //  * Dapatkan API key berdasarkan brand
+    //  *
+    //  * @param string $brandId
+    //  * @param string $brandName
+    //  * @return string
+    //  * @throws Exception
+    //  */
+    // private function getApiKeyByBrand(string $brandId, string $brandName): string
+    // {
+    //     $brandId = strtolower($brandId);
+    //     $brandName = strtolower($brandName);
+
+    //     // Ambil API key berdasarkan brand
+    //     $apiKey = match ($brandId) {
+    //         'ajn-01' => env('XENDIT_API_KEY_JAKINET'),
+    //         'ajn-02' => env('XENDIT_API_KEY_JELANTIK'),
+    //         'ajn-03' => env('XENDIT_API_KEY_JAKINET'),
+    //         default => env('XENDIT_API_KEY_JAKINET'),
+    //     };
+
+    //     // Validasi bahwa API key tidak null
+    //     if (is_null($apiKey)) {
+    //         Log::error('API Key Xendit tidak ditemukan untuk brand', [
+    //             'brand_id' => $brandId,
+    //             'brand_name' => $brandName,
+    //         ]);
+    //         throw new Exception("API Key Xendit tidak dikonfigurasi untuk brand: {$brandId}");
+    //     }
+
+    //     return $apiKey;
+    // }
     /**
-     * Dapatkan API key berdasarkan brand
-     *
-     * @param string $brandId
-     * @param string $brandName
-     * @return string
-     */
-    private function getApiKeyByBrand(string $brandId, string $brandName): string
-    {
-        $brandId = strtolower($brandId);
-        $brandName = strtolower($brandName);
+ * Mengambil API Key Xendit yang sesuai berdasarkan brand ID.
+ *
+ * @param string $brandId ID brand (e.g., 'ajn-01', 'ajn-02')
+ * @param string $brandName Nama brand untuk logging
+ * @return string API Key Xendit
+ * @throws \Exception Jika API Key tidak ditemukan atau tidak terkonfigurasi
+ */
+private function getApiKeyByBrand(string $brandId, string $brandName): string
+{
+    // Mengubah brandId ke huruf kecil untuk konsistensi
+    $brandId = strtolower($brandId);
 
-        // Jakinet (ajn-01) menggunakan API Jakinet
-        if ($brandId === 'ajn-01') {
-            return env('XENDIT_API_KEY_JAKINET');
-        }
+    // Ambil API key berdasarkan brand ID yang sudah dipetakan sesuai struktur bisnis
+    $apiKey = match ($brandId) {
+        // Jakinet (ajn-01) dan Jelantik Nagrak/Rusun (ajn-03) menggunakan kunci API yang sama
+        'ajn-01', 'ajn-03' => env('XENDIT_API_KEY_JAKINET'),
 
-        // Jelantik (ajn-02) menggunakan API Jelantik
-        if ($brandId === 'ajn-02') {
-            return env('XENDIT_API_KEY_JELANTIK');
-        }
+        // Jelantik Perumahan (ajn-02) menggunakan kunci API terpisah
+        'ajn-02' => env('XENDIT_API_KEY_JELANTIK'),
 
-        // Jelantik Nagrak (ajn-03) menggunakan API Jakinet
-        if ($brandId === 'ajn-03') {
-            return env('XENDIT_API_KEY_JAKINET');
-        }
+        // Jika ada brand ID lain yang tidak terdaftar, kembalikan null agar memicu error.
+        // Ini lebih aman daripada menggunakan kunci default yang salah.
+        default => null,
+    };
 
-        // Fallback
-        return env('XENDIT_API_KEY_JAKINET');
+    // Validasi bahwa API key ditemukan dan tidak null
+    if (is_null($apiKey)) {
+        Log::error('API Key Xendit tidak ditemukan atau tidak dikonfigurasi untuk brand', [
+            'brand_id' => $brandId,
+            'brand_name' => strtolower($brandName), // Menggunakan nama brand untuk konteks logging
+        ]);
+        
+        // Berikan pesan error yang lebih spesifik untuk mempermudah debugging
+        throw new \Exception("API Key Xendit untuk brand ID '{$brandId}' tidak diatur di file .env atau tidak terpetakan dalam kode.");
     }
+
+    return $apiKey;
+}
 
     /**
      * Validasi data invoice sebelum dikirim
@@ -354,43 +393,263 @@ class XenditService
     }
 
     /**
- * Siapkan payload untuk Xendit
- *
- * @param Invoice $invoice
- * @param string|null $traceId
- * @return array
- */
-private function prepareXenditPayload(Invoice $invoice, ?string $traceId = null): array
-{
-    try {
-        // Generate reference ID berdasarkan brand dan lokasi
-        $referenceId = $this->formatReferenceId($invoice);
+     * Siapkan payload untuk Xendit
+     *
+     * @param Invoice $invoice
+     * @param string|null $traceId
+     * @return array
+     */
+    private function prepareXenditPayload(Invoice $invoice, ?string $traceId = null): array
+    {
+        try {
+            // Generate reference ID berdasarkan brand dan lokasi
+            $referenceId = $this->formatReferenceId($invoice);
+            
+            // Simpan reference ID ke invoice untuk tracking
+            $invoice->xendit_external_id = $referenceId;
+            $invoice->save();
+            
+            // Buat deskripsi berdasarkan paket internet yang dipilih
+            $description = $this->generatePackageDescription($invoice);
+            
+            // Buat item_name dengan format yang diinginkan
+            $langganan = $invoice->langganan;
+            $itemName = "Layanan Internet";
+            
+            if ($langganan) {
+                // Menentukan kecepatan
+                $speed = '10';
+                $brand = strtolower($invoice->brand);
+                
+                // Cek dari nama layanan atau profil
+                if (!empty($langganan->layanan)) {
+                    preg_match('/(\d+)\s*[Mm][Bb][Pp][Ss]/i', $langganan->layanan, $matches);
+                    if (!empty($matches[1])) {
+                        $speed = $matches[1];
+                    }
+                } elseif (!empty($langganan->nama_layanan)) {
+                    preg_match('/(\d+)\s*[Mm][Bb][Pp][Ss]/i', $langganan->nama_layanan, $matches);
+                    if (!empty($matches[1])) {
+                        $speed = $matches[1];
+                    }
+                } elseif (!empty($langganan->profile_pppoe)) {
+                    preg_match('/(\d+)[Mm][Bb]/i', $langganan->profile_pppoe, $matches);
+                    if (!empty($matches[1])) {
+                        $speed = $matches[1];
+                    }
+                } else {
+                    // Estimasi kecepatan berdasarkan harga
+                    $hargaDasar = $invoice->total_harga / 1.11;
+                    if ($brand === 'ajn-01' || $brand === 'ajn-03') { // Jakinet atau Jelantik (Nagrak)
+                        if ($hargaDasar <= 135135) $speed = '10';
+                        elseif ($hargaDasar <= 199000) $speed = '20';
+                        elseif ($hargaDasar <= 224000) $speed = '30';
+                        elseif ($hargaDasar <= 254000) $speed = '50';
+                        else $speed = '100';
+                    } elseif ($brand === 'ajn-02') { // Jelantik
+                        if ($hargaDasar <= 150000) $speed = '10';
+                        elseif ($hargaDasar <= 209000) $speed = '20';
+                        elseif ($hargaDasar <= 249000) $speed = '30';
+                        elseif ($hargaDasar <= 289900) $speed = '50';
+                        else $speed = '100';
+                    }
+                }
+                
+                // Cek apakah ini invoice prorate
+                $isProrate = false;
+                if (!empty($invoice->description) && stripos($invoice->description, 'prorate') !== false) {
+                    $isProrate = true;
+                } else {
+                    $normalPrice = $this->getNormalPriceBySpeed($speed, $invoice->brand);
+                    $priceDiff = abs($invoice->total_harga - $normalPrice);
+                    if ($normalPrice > 0 && ($priceDiff / $normalPrice) > 0.05) {
+                        $isProrate = true;
+                    }
+                }
+                
+                // Format item_name berdasarkan jenis invoice
+                $totalFormatted = number_format($invoice->total_harga, 0, ',', '.');
+                
+                if ($isProrate) {
+                    $itemName = "Layanan {$speed} Mbps (Harga: {$totalFormatted} IDR)";
+                } else {
+                    $dueDateStr = '';
+                    if (!empty($langganan->tgl_jatuh_tempo)) {
+                        $dueDateObj = Carbon::parse($langganan->tgl_jatuh_tempo);
+                        $dueDateStr = " - Jatuh tempo: " . $dueDateObj->format('d M Y');
+                    }
+                    $itemName = "Layanan {$speed} Mbps (Harga: {$totalFormatted} IDR){$dueDateStr}";
+                }
+            }
+            
+            // Struktur payload
+            return [
+                'external_id' => $referenceId,
+                'payer_email' => $invoice->email,
+                'description' => $description,
+                'amount' => (int) $invoice->total_harga,
+                'items' => [
+                    [
+                        'name' => $itemName,
+                        'quantity' => 1,
+                        'price' => (int) $invoice->total_harga,
+                        'category' => 'Internet Service'
+                    ]
+                ],
+                'customer' => [
+                    'given_names' => $invoice->pelanggan->nama ?? 'Pelanggan',
+                    'email' => $invoice->email,
+                    'mobile_number' => $invoice->no_telp,
+                ],
+                'customer_notification_preference' => [
+                    'invoice_created' => ['email', 'whatsapp'],
+                    'invoice_reminder' => ['email', 'whatsapp'],
+                    'invoice_expired' => ['email', 'whatsapp'],
+                    'invoice_paid' => ['email', 'whatsapp'],
+                ],
+                'metadata' => [
+                    'brand' => $invoice->brand,
+                    'invoice_number' => $invoice->invoice_number,
+                    'trace_id' => $traceId ?? uniqid('xendit_', true)
+                ]
+            ];
+        } catch (Exception $e) {
+            Log::error('Error preparing Xendit payload', [
+                'invoice_number' => $invoice->invoice_number,
+                'error' => $e->getMessage()
+            ]);
+            throw $e;
+        }
+    }
+
+    /**
+     * Format reference ID berdasarkan brand dan lokasi
+     */
+    private function formatReferenceId(Invoice $invoice): string
+    {
+        try {
+            $brand = strtolower($invoice->brand);
+            $pelanggan = $invoice->pelanggan;
+            $namaPelanggan = $pelanggan ? strtolower(preg_replace('/[^a-zA-Z0-9]+/', '_', trim($pelanggan->nama))) : 'customer';
+            $bulan = date('F', strtotime($invoice->tgl_invoice ?? now()));
+            $kodeLokasi = $this->getKodeLokasiFromPelanggan($invoice);
+            $uniqueSuffix = time() . rand(100, 999);
+
+            switch ($brand) {
+                case 'ajn-01': // Jakinet
+                    $referenceId = "jakinet/ftth/{$bulan}/{$namaPelanggan}/{$kodeLokasi}-{$uniqueSuffix}";
+                    break;
+                case 'ajn-02': // Jelantik
+                    $referenceId = "jelantik/ftth/{$bulan}/{$namaPelanggan}/{$kodeLokasi}-{$uniqueSuffix}";
+                    break;
+                case 'ajn-03': // Jelantik (Nagrak)
+                    $referenceId = "jelantik/ftth/{$bulan}/{$namaPelanggan}/{$kodeLokasi}-{$uniqueSuffix}";
+                    break;
+                default:
+                    $referenceId = "{$invoice->invoice_number}-{$uniqueSuffix}";
+                    break;
+            }
+            
+            return $referenceId;
+        } catch (Exception $e) {
+            Log::error('Error formatting reference ID', [
+                'invoice_number' => $invoice->invoice_number,
+                'error' => $e->getMessage()
+            ]);
+            return $invoice->invoice_number . '-' . time() . rand(1000, 9999);
+        }
+    }
+
+    /**
+     * Mendapatkan kode lokasi dari alamat pelanggan
+     */
+    private function getKodeLokasiFromPelanggan(Invoice $invoice): string
+    {
+        $pelanggan = $invoice->pelanggan;
+        if (!$pelanggan) {
+            return $this->getDefaultKodeLokasi($invoice->brand);
+        }
         
-        // Simpan reference ID ke invoice untuk tracking
-        $invoice->xendit_external_id = $referenceId;
-        $invoice->save();
+        $alamat = strtolower($pelanggan->alamat ?? '');
         
-        // Buat deskripsi berdasarkan paket internet yang dipilih
-        $description = $this->generatePackageDescription($invoice);
+        $keywordMap = [
+            'nagrak' => 'Nagrak',
+            'pinus' => 'Pinus Elok',
+            'pulogebang' => 'Pulogebang',
+            'tipar' => 'Tipar Cakung',
+            'cakung' => 'Tipar Cakung',
+            'km2' => 'KM2',
+            'albo' => 'ALBO',
+            'tambun' => 'Tambun',
+            'waringin' => 'Waringin',
+            'parama' => 'Parama',
+        ];
         
-        // Buat item_name dengan format yang diinginkan
+        foreach ($keywordMap as $keyword => $code) {
+            if (stripos($alamat, $keyword) !== false) {
+                return $code;
+            }
+        }
+        
+        return $this->getDefaultKodeLokasi($invoice->brand);
+    }
+
+    /**
+     * Mendapatkan kode lokasi default berdasarkan brand
+     */
+    private function getDefaultKodeLokasi(string $brand): string
+    {
+        $defaultKode = [
+            'ajn-01' => 'Jakinet',
+            'ajn-02' => 'Jelantik',
+            'ajn-03' => 'Jelantik Nagrak'
+        ];
+        
+        return $defaultKode[strtolower($brand)] ?? 'CKG TPR';
+    }
+
+    /**
+     * Generate deskripsi berdasarkan paket internet
+     */
+    private function generatePackageDescription(Invoice $invoice): string
+    {
         $langganan = $invoice->langganan;
-        $itemName = "Layanan Internet";
-        
         if ($langganan) {
-            // Menentukan kecepatan
             $speed = '10';
             $brand = strtolower($invoice->brand);
             
-            // Cek dari nama layanan atau profil
             if (!empty($langganan->layanan)) {
                 preg_match('/(\d+)\s*[Mm][Bb][Pp][Ss]/i', $langganan->layanan, $matches);
                 if (!empty($matches[1])) {
                     $speed = $matches[1];
                 }
+            } elseif (!empty($langganan->nama_layanan)) {
+                preg_match('/(\d+)\s*[Mm][Bb][Pp][Ss]/i', $langganan->nama_layanan, $matches);
+                if (!empty($matches[1])) {
+                    $speed = $matches[1];
+                }
+            } elseif (!empty($langganan->profile_pppoe)) {
+                preg_match('/(\d+)[Mm][Bb]/i', $langganan->profile_pppoe, $matches);
+                if (!empty($matches[1])) {
+                    $speed = $matches[1];
+                }
+            } else {
+                $hargaDasar = $invoice->total_harga / 1.11;
+                if ($brand === 'ajn-01' || $brand === 'ajn-03') {
+                    if ($hargaDasar <= 135135) $speed = '10';
+                    elseif ($hargaDasar <= 199000) $speed = '20';
+                    elseif ($hargaDasar <= 224000) $speed = '30';
+                    elseif ($hargaDasar <= 254000) $speed = '50';
+                    else $speed = '100';
+                } elseif ($brand === 'ajn-02') {
+                    if ($hargaDasar <= 150000) $speed = '10';
+                    elseif ($hargaDasar <= 209000) $speed = '20';
+                    elseif ($hargaDasar <= 249000) $speed = '30';
+                    elseif ($hargaDasar <= 289900) $speed = '50';
+                    else $speed = '100';
+                }
             }
             
-            // Cek apakah ini invoice prorate
             $isProrate = false;
             if (!empty($invoice->description) && stripos($invoice->description, 'prorate') !== false) {
                 $isProrate = true;
@@ -402,340 +661,86 @@ private function prepareXenditPayload(Invoice $invoice, ?string $traceId = null)
                 }
             }
             
-            // Format item_name berdasarkan jenis invoice
-            $totalFormatted = number_format($invoice->total_harga, 0, ',', '.');
-            
             if ($isProrate) {
-                // Untuk prorate, tidak perlu detail pajak dan tanggal jatuh tempo
-                $itemName = "Layanan {$speed} Mbps (Harga: {$totalFormatted} IDR)";
+                return "Biaya berlangganan internet Up To {$speed} Mbps";
             } else {
-                // Untuk bulanan, tampilkan dengan format lengkap
-                // Tanggal jatuh tempo
-                $dueDateStr = '';
+                $dueDate = '';
                 if (!empty($langganan->tgl_jatuh_tempo)) {
-                    $dueDateObj = Carbon::parse($langganan->tgl_jatuh_tempo);
-                    $dueDateStr = " - Jatuh tempo: " . $dueDateObj->format('d M Y');
+                    try {
+                        $dueDateObj = Carbon::parse($langganan->tgl_jatuh_tempo);
+                        $formattedDate = $dueDateObj->format('d/m/Y');
+                        $dueDate = " jatuh tempo pembayaran tanggal {$formattedDate}";
+                    } catch (Exception $e) {
+                        Log::error('Error formatting due date', [
+                            'error' => $e->getMessage(),
+                            'langganan_id' => $langganan->id
+                        ]);
+                    }
                 }
-                
-                $itemName = "Layanan {$speed} Mbps (Harga: {$totalFormatted} IDR){$dueDateStr}";
+                return "Biaya berlangganan internet up to {$speed} Mbps{$dueDate}";
             }
         }
         
-        // Struktur payload yang sudah ada
-        return [
-            'external_id' => $referenceId,
-            'payer_email' => $invoice->email,
-            'description' => $description,
-            'amount' => (int) $invoice->total_harga,
-            'items' => [
-                [
-                    'name' => $itemName,
-                    'quantity' => 1,
-                    'price' => (int) $invoice->total_harga,
-                    'category' => 'Internet Service'
-                ]
-            ],
-            'customer' => [
-                'given_names' => $invoice->pelanggan->nama ?? 'Pelanggan',
-                'email' => $invoice->email,
-                'mobile_number' => $invoice->no_telp,
-            ],
-            'customer_notification_preference' => [
-                'invoice_created' => ['email', 'whatsapp'],
-                'invoice_reminder' => ['email', 'whatsapp'],
-                'invoice_expired' => ['email', 'whatsapp'],
-                'invoice_paid' => ['email', 'whatsapp'],
-            ],
-            'metadata' => [
-                'brand' => $invoice->brand,
-                'invoice_number' => $invoice->invoice_number,
-                'trace_id' => $traceId ?? uniqid('xendit_', true)
-            ]
-        ];
-    } catch (Exception $e) {
-        Log::error('Error preparing Xendit payload', [
-            'invoice_number' => $invoice->invoice_number,
-            'error' => $e->getMessage()
-        ]);
-        throw $e;
-    }
-}
-
-
-    /**
- * Format reference ID berdasarkan brand dan lokasi
- * menggunakan format yang konsisten dengan gambar pertama
- */
-private function formatReferenceId(Invoice $invoice): string
-{
-    try {
-        // Ambil brand dari invoice
-        $brand = strtolower($invoice->brand);
-        
-        // Dapatkan nama pelanggan (ambil kata pertama saja)
-        $pelanggan = $invoice->pelanggan;
-        // $namaPelanggan = $pelanggan ? strtolower(explode(' ', trim($pelanggan->nama))[0]) : 'customer';
-        
-        $namaPelanggan = $pelanggan ? strtolower(preg_replace('/[^a-zA-Z0-9]+/', '_', trim($pelanggan->nama))) : 'customer';
-        
-        // Dapatkan bulan dalam bahasa Inggris
-        $bulan = date('F', strtotime($invoice->tgl_invoice ?? now()));
-        
-        // Dapatkan kode lokasi dari alamat pelanggan
-        $kodeLokasi = $this->getKodeLokasiFromPelanggan($invoice);
-        
-        // Selalu tambahkan timestamp untuk memastikan keunikan
-        $uniqueSuffix = time() . rand(100, 999);
-        
-        // Format berdasarkan brand
-        switch ($brand) {
-            case 'ajn-01': // Jakinet
-                $referenceId = "jakinet/ftth/{$bulan}/{$namaPelanggan}/{$kodeLokasi}-{$uniqueSuffix}";
-                break;
-                
-            case 'ajn-02': // Jelantik
-                $referenceId = "jelantik/ftth/{$bulan}/{$namaPelanggan}/{$kodeLokasi}-{$uniqueSuffix}";
-                break;
-                
-            case 'ajn-03': // Jelantik (Nagrak)
-                $referenceId = "jelantik/ftth/{$bulan}/{$namaPelanggan}/{$kodeLokasi}-{$uniqueSuffix}";
-                break;
-                
-            default:
-                // Default ke invoice number dan timestamp
-                $referenceId = "{$invoice->invoice_number}-{$uniqueSuffix}";
-                break;
+        if (!empty($invoice->description)) {
+            return $invoice->description;
         }
         
-        return $referenceId;
-        
-    } catch (Exception $e) {
-        Log::error('Error formatting reference ID', [
-            'invoice_number' => $invoice->invoice_number,
-            'error' => $e->getMessage()
-        ]);
-        // Fallback ke nilai yang aman dan dijamin unik
-        return $invoice->invoice_number . '-' . time() . rand(1000, 9999);
+        return "Biaya berlangganan internet";
     }
-}
 
     /**
-     * Mendapatkan kode lokasi dari alamat pelanggan
+     * Helper untuk mendapatkan harga normal berdasarkan kecepatan
      */
-    private function getKodeLokasiFromPelanggan(Invoice $invoice): string
-{
-    // Ambil alamat dari pelanggan
-    $pelanggan = $invoice->pelanggan;
-    if (!$pelanggan) {
-        return $this->getDefaultKodeLokasi($invoice->brand);
-    }
-    
-    $alamat = strtolower($pelanggan->alamat ?? '');
-    
-    // Mapping kata kunci lokasi ke nama lokasi lengkap
-    $keywordMap = [
-        'nagrak' => 'Nagrak',
-        'pinus' => 'Pinus Elok',
-        'pulogebang' => 'Pulogebang',
-        'tipar' => 'Tipar Cakung',
-        'cakung' => 'Tipar Cakung',
-        'km2' => 'KM2',
-        'albo' => 'ALBO',
-        'tambun' => 'Tambun',
-        'waringin' => 'Waringin',
-        'parama' => 'Parama',
-    ];
-    
-    // Cari kode lokasi berdasarkan alamat
-    foreach ($keywordMap as $keyword => $code) {
-        if (stripos($alamat, $keyword) !== false) {
-            return $code;
-        }
-    }
-    
-    // Default berdasarkan brand
-    return $this->getDefaultKodeLokasi($invoice->brand);
-}
-
-    /**
-     * Mendapatkan kode lokasi default berdasarkan brand
-     */
-    private function getDefaultKodeLokasi(string $brand): string
+    private function getNormalPriceBySpeed(string $speed, string $brand): float
     {
-        $defaultKode = [
-            'ajn-01' => 'Jakinet',  // Default untuk Jakinet
-            'ajn-02' => 'Jelantik',      // Default untuk Jelantik
-            'ajn-03' => 'Jelantik Nagrak'       // Default untuk Nagrak (masuk ke Jelantik)
+        $brand = strtolower($brand);
+        $speed = (int)$speed;
+        
+        $priceMap = [
+            'ajn-01' => [
+                10 => 150000,
+                20 => 220890,
+                30 => 248490,
+                50 => 281990,
+                100 => 330000,
+            ],
+            'ajn-02' => [
+                10 => 166650,
+                20 => 231990,
+                30 => 276490,
+                50 => 321790,
+                100 => 400000,
+            ],
+            'ajn-03' => [
+                10 => 150000,
+                20 => 220890,
+                30 => 248490,
+                50 => 281990,
+                100 => 330000,
+            ],
         ];
         
-        return $defaultKode[strtolower($brand)] ?? 'CKG TPR';
-    }
-
-    /**
- * Generate deskripsi berdasarkan paket internet
- *
- * @param Invoice $invoice
- * @return string
- */
-private function generatePackageDescription(Invoice $invoice): string
-{
-    // Coba dapatkan informasi paket dari langganan
-    $langganan = $invoice->langganan;
-    if ($langganan) {
-        // Tentukan kecepatan internet
-        $speed = '10';
-        
-        // Coba ekstrak kecepatan dari layanan jika tersedia
-        if (!empty($langganan->layanan)) {
-            preg_match('/(\d+)\s*[Mm][Bb][Pp][Ss]/i', $langganan->layanan, $matches);
-            if (!empty($matches[1])) {
-                $speed = $matches[1];
+        if (isset($priceMap[$brand])) {
+            $brandPrices = $priceMap[$brand];
+            if (isset($brandPrices[$speed])) {
+                return $brandPrices[$speed];
             }
-        } elseif (!empty($langganan->nama_layanan)) {
-            preg_match('/(\d+)\s*[Mm][Bb][Pp][Ss]/i', $langganan->nama_layanan, $matches);
-            if (!empty($matches[1])) {
-                $speed = $matches[1];
-            }
-        } elseif (!empty($langganan->profile_pppoe)) {
-            preg_match('/(\d+)[Mm][Bb]/i', $langganan->profile_pppoe, $matches);
-            if (!empty($matches[1])) {
-                $speed = $matches[1];
-            }
-        } else {
-            // Estimasi kecepatan berdasarkan harga jika tidak ditemukan
-            $brand = strtolower($invoice->brand);
-            $hargaDasar = $invoice->total_harga / 1.11;
             
-            if ($brand === 'ajn-01' || $brand === 'ajn-03') { // Jakinet atau Jelantik (Nagrak)
-                if ($hargaDasar <= 135135) $speed = '10';
-                elseif ($hargaDasar <= 199000) $speed = '20';
-                elseif ($hargaDasar <= 224000) $speed = '30';
-                elseif ($hargaDasar <= 254000) $speed = '50';
-                else $speed = '100';
-            } elseif ($brand === 'ajn-02') { // Jelantik
-                if ($hargaDasar <= 150000) $speed = '10';
-                elseif ($hargaDasar <= 209000) $speed = '20';
-                elseif ($hargaDasar <= 249000) $speed = '30';
-                elseif ($hargaDasar <= 289900) $speed = '50';
-                else $speed = '100';
-            }
-        }
-        
-        // Cek apakah ini invoice prorate (pembayaran sebagian bulan)
-        $isProrate = false;
-        // Jika terdapat keterangan prorate pada invoice
-        if (!empty($invoice->description) && stripos($invoice->description, 'prorate') !== false) {
-            $isProrate = true;
-        }
-        // Atau jika total_harga tidak bulat sesuai paket biasanya (toleransi 5%)
-        else {
-            $normalPrice = $this->getNormalPriceBySpeed($speed, $invoice->brand);
-            $priceDiff = abs($invoice->total_harga - $normalPrice);
-            if ($normalPrice > 0 && ($priceDiff / $normalPrice) > 0.05) {
-                $isProrate = true;
-            }
-        }
-        
-        // Format deskripsi sesuai jenis invoice
-        if ($isProrate) {
-            // Untuk prorate, tidak perlu menampilkan tanggal jatuh tempo
-            return "Biaya berlangganan internet Up To {$speed} Mbps";
-        } else {
-            // Untuk bulanan, tambahkan informasi tanggal jatuh tempo
-            $dueDate = '';
-            if (!empty($langganan->tgl_jatuh_tempo)) {
-                try {
-                    $dueDateObj = Carbon::parse($langganan->tgl_jatuh_tempo);
-                    $formattedDate = $dueDateObj->format('d/m/Y');
-                    $dueDate = " jatuh tempo pembayaran tanggal {$formattedDate}";
-                } catch (Exception $e) {
-                    Log::error('Error formatting due date', [
-                        'error' => $e->getMessage(),
-                        'langganan_id' => $langganan->id
-                    ]);
+            $speeds = array_keys($brandPrices);
+            $closest = $speeds[0];
+            foreach ($speeds as $s) {
+                if (abs($speed - $s) < abs($speed - $closest)) {
+                    $closest = $s;
                 }
             }
-            
-            return "Biaya berlangganan internet up to {$speed} Mbps{$dueDate}";
-        }
-    }
-    
-    // Default jika tidak bisa menentukan paket
-    if (!empty($invoice->description)) {
-        return $invoice->description;
-    }
-    
-    return "Biaya berlangganan internet";
-}
-
-
-    /**
- * Helper untuk mendapatkan harga normal berdasarkan kecepatan
- *
- * @param string $speed
- * @param string $brand
- * @return float
- */
-private function getNormalPriceBySpeed(string $speed, string $brand): float
-{
-    $brand = strtolower($brand);
-    $speed = (int)$speed;
-    
-    $priceMap = [
-        'ajn-01' => [ // Jakinet
-            10 => 150000,
-            20 => 220890,
-            30 => 248490,
-            50 => 281990,
-            100 => 330000,
-        ],
-        'ajn-02' => [ // Jelantik
-            10 => 166650,
-            20 => 231990,
-            30 => 276490,
-            50 => 321790,
-            100 => 400000,
-        ],
-        'ajn-03' => [ // Jelantik (Nagrak) - menggunakan harga Jakinet
-            10 => 150000,
-            20 => 220890,
-            30 => 248490,
-            50 => 281990,
-            100 => 330000,
-        ],
-    ];
-    
-    // Get closest speed if exact match doesn't exist
-    if (isset($priceMap[$brand])) {
-        $brandPrices = $priceMap[$brand];
-        if (isset($brandPrices[$speed])) {
-            return $brandPrices[$speed];
+            return $brandPrices[$closest];
         }
         
-        // Find closest speed
-        $speeds = array_keys($brandPrices);
-        $closest = $speeds[0];
-        foreach ($speeds as $s) {
-            if (abs($speed - $s) < abs($speed - $closest)) {
-                $closest = $s;
-            }
-        }
-        return $brandPrices[$closest];
+        return 0;
     }
-    
-    return 0;
-}
-
-
 
     /**
      * Proses respons dari Xendit
-     *
-     * @param \Illuminate\Http\Client\Response $response
-     * @param Invoice $invoice
-     * @param string|null $traceId
-     * @return array
-     * @throws Exception
      */
     private function processXenditResponse($response, Invoice $invoice, ?string $traceId = null): array
     {
@@ -750,7 +755,6 @@ private function getNormalPriceBySpeed(string $speed, string $brand): float
 
         $responseData = $response->json();
 
-        // Periksa apakah invoice_url ada di response
         if (empty($responseData['invoice_url'])) {
             Log::error('Invoice URL tidak ditemukan', [
                 'response' => $responseData,
@@ -760,10 +764,9 @@ private function getNormalPriceBySpeed(string $speed, string $brand): float
         }
 
         try {
-            // Update invoice dengan data dari Xendit
             $invoice->payment_link = $responseData['invoice_url'];
             $invoice->xendit_id = $responseData['id'];
-            $invoice->expiry_date = Carbon::parse($responseData['expiry_date']); // <--- TAMBAHKAN INI
+            $invoice->expiry_date = Carbon::parse($responseData['expiry_date']);
             $invoice->xendit_external_id = $responseData['external_id'];
             $invoice->save();
 
@@ -778,7 +781,6 @@ private function getNormalPriceBySpeed(string $speed, string $brand): float
                 'error' => $e->getMessage(),
                 'trace_id' => $traceId
             ]);
-            // Meskipun gagal update, kita masih bisa mengembalikan link pembayaran
         }
 
         return [
@@ -791,84 +793,63 @@ private function getNormalPriceBySpeed(string $speed, string $brand): float
 
     /**
      * Cek status invoice di Xendit
-     *
-     * @param string $xenditId
-     * @param string $brand
-     * @return array|null
      */
-    public function checkInvoiceStatus(string $xenditId, string $brand)
-    {
-        try {
-            $brandName = $this->getBrandName($brand);
-            $apiKey = $this->getApiKeyByBrand($brand, $brandName);
-            $url = "https://api.xendit.co/v2/invoices/{$xenditId}";
+public function checkInvoiceStatus(string $xenditId, string $brand)
+{
+    try {
+        $brandName = $this->getBrandName($brand);
+        $apiKey = $this->getApiKeyByBrand($brand, $brandName);
+        $url = "https://api.xendit.co/v2/invoices/{$xenditId}";
 
-            $response = Http::withBasicAuth($apiKey, '')
-                ->timeout(10)
-                ->get($url);
+        $response = Http::withBasicAuth($apiKey, '')
+            ->timeout(10)
+            ->get($url);
 
-            if (!$response->successful()) {
-                Log::error('Gagal memeriksa status invoice Xendit', [
-                    'xenditId' => $xenditId,
-                    'brand' => $brand,
-                    'response' => $response->body()
-                ]);
-                return null;
-            }
-
-            $responseData = $response->json();
-            
-            // Jika status invoice adalah PAID atau SETTLED, update langganan
-            if (isset($responseData['status']) && in_array($responseData['status'], ['PAID', 'SETTLED'])) {
-                // Cari invoice berdasarkan xendit_id
-                $invoice = Invoice::where('xendit_id', $xenditId)->first();
-                
-                if ($invoice) {
-                    // Update status invoice
-                    $newStatus = self::STATUS_MAP[$responseData['status']] ?? 'Tidak Diketahui';
-                    $invoice->status_invoice = $newStatus;
-                    $invoice->paid_amount = $responseData['paid_amount'] ?? null;
-                    $invoice->paid_at = $responseData['paid_at'] ?? null;
-                    $invoice->save();
-                    
-                    // Update langganan jika invoice sudah dibayar
-                    $langganan = $invoice->langganan;
-                    
-                    if ($langganan) {
-                        $tglInvoice = $invoice->tgl_invoice 
-                            ? Carbon::parse($invoice->tgl_invoice)->format('Y-m-d')
-                            : now()->format('Y-m-d');
-                            
-                        Log::info('Memperbarui langganan dari status check', [
-                            'invoice_number' => $invoice->invoice_number,
-                            'xendit_id' => $xenditId,
-                            'tanggal_invoice' => $tglInvoice
-                        ]);
-                        
-                        // PERBAIKAN: Menambahkan parameter invoice_number
-                        $langganan->updateTanggalJatuhTempo($tglInvoice, $invoice->invoice_number);
-                    }
-                }
-            }
-            
-            return $responseData;
-
-        } catch (Exception $e) {
-            Log::error('Kesalahan memeriksa status invoice', [
-                'xendit_id' => $xenditId,
+        if (!$response->successful()) {
+            Log::error('Gagal memeriksa status invoice Xendit', [
+                'xenditId' => $xenditId,
                 'brand' => $brand,
-                'error' => $e->getMessage()
+                'response' => $response->body()
             ]);
-
             return null;
         }
+
+        $responseData = $response->json();
+        
+        $invoice = Invoice::with('langganan')->where('xendit_id', $xenditId)->first();
+        
+        if ($invoice && isset($responseData['status'])) {
+            $newStatus = self::STATUS_MAP[$responseData['status']] ?? 'Tidak Diketahui';
+            $invoice->status_invoice = $newStatus;
+            $invoice->paid_amount = $responseData['paid_amount'] ?? null;
+            $invoice->paid_at = $responseData['paid_at'] ?? null;
+            $invoice->save();
+            
+            if (in_array($newStatus, ['Lunas', 'Selesai'])) {
+                $langganan = $invoice->langganan;
+                if ($langganan) {
+                    $tglInvoice = $invoice->tgl_invoice 
+                        ? Carbon::parse($invoice->tgl_invoice)->format('Y-m-d')
+                        : now()->format('Y-m-d');
+                    $langganan->updateTanggalJatuhTempo($tglInvoice, $invoice->invoice_number);
+                }
+            }
+        }
+        
+        return $responseData;
+
+    } catch (Exception $e) {
+        Log::error('Kesalahan memeriksa status invoice', [
+            'xendit_id' => $xenditId,
+            'brand' => $brand,
+            'error' => $e->getMessage()
+        ]);
+        return null;
     }
+}
 
     /**
      * Mengambil daftar invoice yang belum dibayar dari Xendit
-     *
-     * @param string $brand
-     * @return array
      */
     public function isInvoiceLinkAccessible(string $paymentLink): bool
     {

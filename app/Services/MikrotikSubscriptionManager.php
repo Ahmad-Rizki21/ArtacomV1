@@ -215,10 +215,14 @@ class MikrotikSubscriptionManager
         
         Log::info("Memulai proses suspend untuk langganan yang jatuh tempo hari ini: {$today}");
         
+        // $dueSubscriptions = Langganan::where('tgl_jatuh_tempo', $today)
+        //     ->where('user_status', 'Aktif')
+        //     ->with('pelanggan.dataTeknis') // Eager load untuk efisiensi
+        //     ->get();
         $dueSubscriptions = Langganan::where('tgl_jatuh_tempo', $today)
-            ->where('user_status', 'Aktif')
-            ->with('pelanggan.dataTeknis') // Eager load untuk efisiensi
-            ->get();
+        ->where('user_status', 'Aktif')
+        ->with('invoices') // <-- TAMBAHKAN EAGER LOADING
+        ->get();
         
         $stats['total'] = $dueSubscriptions->count();
         if ($stats['total'] === 0) {
@@ -230,10 +234,14 @@ class MikrotikSubscriptionManager
             
         foreach ($dueSubscriptions as $langganan) {
             // Cek apakah ada invoice yang belum lunas untuk periode tagihan saat ini
-            $hasUnpaidInvoice = Invoice::where('pelanggan_id', $langganan->pelanggan_id)
-                ->where('tgl_jatuh_tempo', $langganan->tgl_jatuh_tempo)
-                ->where('status_invoice', 'Menunggu Pembayaran')
-                ->exists();
+            // $hasUnpaidInvoice = Invoice::where('pelanggan_id', $langganan->pelanggan_id)
+            //     ->where('tgl_jatuh_tempo', $langganan->tgl_jatuh_tempo)
+            //     ->where('status_invoice', 'Menunggu Pembayaran')
+            //     ->exists();
+            $hasUnpaidInvoice = $langganan->invoices
+            ->where('tgl_jatuh_tempo', $langganan->tgl_jatuh_tempo)
+            ->where('status_invoice', 'Menunggu Pembayaran')
+            ->isNotEmpty(); // isNotEmpty() lebih efisien daripada exists() pada collection
                 
             if (!$hasUnpaidInvoice) {
                 $stats['skipped']++;

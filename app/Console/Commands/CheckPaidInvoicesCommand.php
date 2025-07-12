@@ -4,9 +4,9 @@ namespace App\Console\Commands;
 
 use Illuminate\Console\Command;
 use App\Models\Invoice;
-use App\Models\Langganan; // <-- TAMBAHKAN INI
+use App\Models\Langganan;
 use App\Services\XenditService;
-use App\Services\MikrotikSubscriptionManager; // <-- TAMBAHKAN INI
+use App\Services\MikrotikSubscriptionManager;
 use Illuminate\Support\Facades\Log;
 
 class CheckPaidInvoicesCommand extends Command
@@ -15,23 +15,25 @@ class CheckPaidInvoicesCommand extends Command
     protected $description = 'Check paid invoices and activate subscriptions on Mikrotik.';
     
     protected $xenditService;
-    protected $mikrotikManager; // <-- TAMBAHKAN INI
+    protected $mikrotikManager;
 
-    public function __construct(XenditService $xenditService, MikrotikSubscriptionManager $mikrotikManager) // <-- MODIFIKASI INI
+    public function __construct(XenditService $xenditService, MikrotikSubscriptionManager $mikrotikManager)
     {
         parent::__construct();
         $this->xenditService = $xenditService;
-        $this->mikrotikManager = $mikrotikManager; // <-- TAMBAHKAN INI
+        $this->mikrotikManager = $mikrotikManager;
     }
     
     public function handle()
     {
         $this->info('Starting to check status of unpaid invoices...');
         
-        // $unpaidInvoices = Invoice::where('status_invoice', 'Menunggu Pembayaran')->get();
-        $unpaidInvoices = Invoice::with('langganan') // <-- Eager Load relasi langganan
-        ->where('status_invoice', 'Menunggu Pembayaran')
-        ->get();
+        // REVISI 1: Gunakan Eager Loading 'langganan'.
+        // Ini akan mengambil semua data langganan yang terkait dalam satu query tambahan,
+        // menghilangkan N+1 query problem di dalam loop.
+        $unpaidInvoices = Invoice::with('langganan')
+            ->where('status_invoice', 'Menunggu Pembayaran')
+            ->get();
 
         if ($unpaidInvoices->isEmpty()) {
             $this->info('No unpaid invoices to check.');
@@ -50,14 +52,11 @@ class CheckPaidInvoicesCommand extends Command
             $result = $this->xenditService->checkInvoiceStatus($invoice->xendit_id, $invoice->brand);
 
             if ($result && isset($result['status']) && in_array($result['status'], ['PAID', 'SETTLED'])) {
-                // Status sudah diperbarui di dalam service, kita refresh untuk dapat data baru
                 $invoice->refresh(); 
                 $this->info("SUCCESS: Status for Invoice #{$invoice->invoice_number} is now {$invoice->status_invoice}.");
                 Log::info("[Scheduler] Invoice #{$invoice->invoice_number} updated to {$invoice->status_invoice}.");
 
-                // === LOGIKA BARU UNTUK AKTIVASI MIKROTIK ===
                 $this->activateSubscription($invoice);
-                // ===========================================
 
             } else {
                 $status = $result['status'] ?? 'UNKNOWN';
@@ -69,17 +68,11 @@ class CheckPaidInvoicesCommand extends Command
         return self::SUCCESS;
     }
 
-    /**
-     * Mengaktifkan langganan setelah invoice dibayar.
-     *
-     * @param Invoice $invoice
-     */
     protected function activateSubscription(Invoice $invoice)
     {
         $this->info("   Attempting to activate subscription for Pelanggan ID: {$invoice->pelanggan_id}");
 
-        // 1. Cari langganan yang relevan
-        // $langganan = Langganan::where('pelanggan_id', $invoice->pelanggan_id)->first();
+        // REVISI 2: Tidak perlu query lagi, langsung akses dari relasi yang sudah di-load.
         $langganan = $invoice->langganan;
 
         if (!$langganan) {
@@ -88,18 +81,16 @@ class CheckPaidInvoicesCommand extends Command
             return;
         }
 
-        // 2. Cek apakah statusnya memang perlu diaktifkan (misalnya dari 'Suspend')
         if ($langganan->user_status === 'Aktif') {
             $this->info("   INFO: Subscription is already active. No action needed.");
             return;
         }
 
-        // 3. Update status langganan di database
         $langganan->user_status = 'Aktif';
         $langganan->save();
         $this->info("   DB Updated: Subscription status changed to 'Aktif'.");
 
-        // 4. Panggil MikrotikManager untuk mengaktifkan di router
+        // Panggil MikrotikManager. Pastikan logic di dalamnya juga efisien.
         $result = $this->mikrotikManager->handleSubscriptionStatus($langganan, 'activate');
 
         if ($result) {
